@@ -252,38 +252,89 @@ footer {
 
 /* 手机端竖屏提示 */
 @media (max-width: 768px) and (orientation: portrait) {
-    body::before {
-        content: "请将手机横屏使用";
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(15, 23, 42, 0.9);
-        color: var(--text-primary);
+    .mobile-hint {
         display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 1.5rem;
-        font-weight: bold;
-        z-index: 9999;
-        text-align: center;
     }
-    .container {
-        display: none;
-    }
-    header {
-        display: none;
-    }
-    footer {
+    .container, header, footer {
         display: none;
     }
 }
 
-/* 手机端横屏正常显示 */
-@media (max-width: 1024px) and (orientation: landscape) {
+.mobile-hint {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(15, 23, 42, 0.95);
+    color: var(--text-primary);
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    font-weight: bold;
+    z-index: 9999;
+    text-align: center;
+}
+
+/* 手机竖屏单列布局 */
+@media (max-width: 768px) and (orientation: landscape) {
+    header h1 {
+        font-size: 1.3rem;
+    }
+    header p {
+        font-size: 0.75rem;
+    }
+    header {
+        padding: 0.5rem;
+    }
+    .container {
+        grid-template-columns: 1fr;
+        padding: 0.5rem;
+        gap: 0.5rem;
+    }
+    .editor-section,
+    .output-section,
+    .stdin-section {
+        grid-column: 1;
+        grid-row: auto;
+    }
+    .CodeMirror {
+        min-height: 200px;
+        font-size: 13px;
+    }
+    .output-content {
+        min-height: 120px;
+        font-size: 12px;
+    }
+    #stdinInput {
+        min-height: 50px;
+        font-size: 12px;
+    }
+    .btn {
+        padding: 0.35rem 0.7rem;
+        font-size: 0.75rem;
+    }
+    .editor-header,
+    .output-header,
+    .stdin-header {
+        padding: 0.4rem 0.6rem;
+        font-size: 0.8rem;
+    }
+    footer {
+        padding: 0.75rem;
+        font-size: 0.75rem;
+    }
+    .footer-highlight {
+        font-size: 0.85rem;
+    }
+}
+
+/* 平板横屏双列 */
+@media (min-width: 769px) and (max-width: 1024px) and (orientation: landscape) {
     .container {
         grid-template-columns: 1fr 1fr;
         padding: 1rem;
+        gap: 1rem;
     }
 }
