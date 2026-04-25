@@ -1,6 +1,7 @@
 // Judge0 API 配置
 const JUDGE0_API_URL = 'https://ce.judge0.com';
 const C_LANGUAGE_ID = 50; // C (GCC 12.2.0)
+const CORS_PROXY = 'https://corsproxy.io/?';
 
 // 默认 C 代码模板
 const DEFAULT_CODE = `#include <stdio.h>
@@ -76,7 +77,8 @@ function showLoading() {
 
 // 提交代码到 Judge0
 async function submitCode(sourceCode, stdin = '') {
-    const response = await fetch(`${JUDGE0_API_URL}/submissions?base64_encoded=false&wait=false`, {
+    const url = CORS_PROXY + encodeURIComponent(`${JUDGE0_API_URL}/submissions?base64_encoded=false&wait=false`);
+    const response = await fetch(url, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -99,7 +101,8 @@ async function submitCode(sourceCode, stdin = '') {
 
 // 获取提交结果
 async function getResult(token) {
-    const response = await fetch(`${JUDGE0_API_URL}/submissions/${token}?base64_encoded=false`);
+    const url = CORS_PROXY + encodeURIComponent(`${JUDGE0_API_URL}/submissions/${token}?base64_encoded=false`);
+    const response = await fetch(url);
     
     if (!response.ok) {
         throw new Error(`获取结果失败: ${response.statusText}`);
