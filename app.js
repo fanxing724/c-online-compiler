@@ -4,9 +4,6 @@ const C_LANGUAGE_ID = 50; // C (GCC 12.2.0)
 const COOLDOWN_MS = 5000; // 5秒请求冷却
 const MAX_CODE_LENGTH = 32768; // 32KB 代码限制
 
-// 使用 codetabs 代理（较稳定）
-const CORS_PROXY = 'https://api.codetabs.com/v1/proxy?quest=';
-
 let lastSubmitTime = 0;
 let isRunning = false;
 
@@ -82,12 +79,10 @@ function showLoading() {
     outputEl.style.color = 'var(--text-secondary)';
 }
 
-// 提交代码到 Judge0
+// 提交代码到 Judge0（直连）
 async function submitCode(sourceCode, stdin = '') {
-    const targetUrl = `${JUDGE0_API_URL}/submissions?base64_encoded=false&wait=false`;
-    const url = CORS_PROXY + encodeURIComponent(targetUrl);
-    
-    console.log('目标:', targetUrl);
+    const url = `${JUDGE0_API_URL}/submissions?base64_encoded=false&wait=false`;
+    console.log('提交到:', url);
     
     const response = await fetch(url, {
         method: 'POST',
@@ -111,11 +106,9 @@ async function submitCode(sourceCode, stdin = '') {
     return data;
 }
 
-// 获取提交结果
+// 获取提交结果（直连）
 async function getResult(token) {
-    const targetUrl = `${JUDGE0_API_URL}/submissions/${token}?base64_encoded=false`;
-    const url = CORS_PROXY + encodeURIComponent(targetUrl);
-    
+    const url = `${JUDGE0_API_URL}/submissions/${token}?base64_encoded=false`;
     const response = await fetch(url);
     if (!response.ok) {
         throw new Error(`获取结果失败`);
