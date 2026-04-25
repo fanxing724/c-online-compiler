@@ -42,7 +42,7 @@ const stdinInput = document.getElementById('stdinInput');
 const STATUS_MAP = {
     1: { text: '等待中', class: 'running' },
     2: { text: '处理中', class: 'running' },
-    3: { text: '已接受', class: 'success' },
+    3: { text: '运行成功', class: 'success' },
     4: { text: '错误答案', class: 'error' },
     5: { text: '超时', class: 'error' },
     6: { text: '编译错误', class: 'error' },
@@ -102,17 +102,8 @@ async function submitCode(sourceCode, stdin = '') {
     }
 
     const result = await response.json();
-    console.log('结果:', result);
+    console.log('结果:', JSON.stringify(result, null, 2));
     return result;
-}
-
-// 不再需要轮询
-async function getResult(token) {
-    return null; // 不再使用
-}
-
-async function pollResult(token) {
-    return null; // 不再使用
 }
 
 // 运行代码
