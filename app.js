@@ -1,6 +1,8 @@
 // Judge0 API 配置
 const JUDGE0_API_URL = 'https://ce.judge0.com';
 const C_LANGUAGE_ID = 50; // C (GCC 12.2.0)
+const COOLDOWN_MS = 5000; // 5秒请求冷却
+const MAX_CODE_LENGTH = 32768; // 32KB 代码限制
 
 // 多个CORS代理，自动切换
 const CORS_PROXIES = [
@@ -11,6 +13,8 @@ const CORS_PROXIES = [
 ];
 
 let proxyIndex = 0;
+let lastSubmitTime = 0;
+let isRunning = false;
 
 function getCorsProxy() {
     return CORS_PROXIES[proxyIndex % CORS_PROXIES.length];
@@ -18,6 +22,7 @@ function getCorsProxy() {
 
 function nextProxy() {
     proxyIndex++;
+    console.log('切换代理到:', getCorsProxy());
 }
 
 // 默认 C 代码模板
@@ -88,14 +93,19 @@ function showOutput(text, isError = false) {
 }
 
 function showLoading() {
-    outputEl.innerHTML = '<span class="spinner"></span> 正在编译运行...';
+    outputEl.textContent = '正在编译运行...';
     outputEl.style.color = 'var(--text-secondary)';
 }
 
 // 提交代码到 Judge0
 async function submitCode(sourceCode, stdin = '') {
     const proxy = getCorsProxy();
-    const url = proxy + encodeURIComponent(`${JUDGE0_API_URL}/submissions?base64_encoded=false&wait=false`);
+    const targetUrl = `${JUDGE0_API_URL}/submissions?base64_encoded=false&wait=false`;
+    const url = proxy + encodeURIComponent(targetUrl);
+    
+    console.log('使用代理:', proxy);
+    console.log('目标地址:', targetUrl);
+    
     const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -111,92 +121,117 @@ async function submitCode(sourceCode, stdin = '') {
     });
 
     if (!response.ok) {
-        throw new Error(`提交失败: ${response.statusText}`);
+        const errText = await response.text();
+        throw new Error(`提交失败 (${response.status}): ${errText.substring(0, 200)}`);
     }
 
-    return await response.json();
+    const data = await response.json();
+    console.log('提交成功, token:', data.token);
+    return data;
 }
 
 // 获取提交结果
 async function getResult(token) {
     const proxy = getCorsProxy();
-    const url = proxy + encodeURIComponent(`${JUDGE0_API_URL}/submissions/${token}?base64_encoded=false`);
+    const targetUrl = `${JUDGE0_API_URL}/submissions/${token}?base64_encoded=false`;
+    const url = proxy + encodeURIComponent(targetUrl);
+    
     const response = await fetch(url);
     
     if (!response.ok) {
-        throw new Error(`获取结果失败: ${response.statusText}`);
+        throw new Error(`获取结果失败 (${response.status})`);
     }
 
     return await response.json();
 }
 
 // 轮询结果
-async function pollResult(token, maxAttempts = 30, interval = 1000) {
+async function pollResult(token) {
+    let delay = 800;
+    const maxAttempts = 50;
+    
     for (let i = 0; i < maxAttempts; i++) {
         const result = await getResult(token);
+        console.log('轮询结果, 状态:', result.status.id);
         
-        // 状态 1 和 2 表示还在处理中
-        if (result.status.id !== 1 && result.status.id !== 2) {
+        if (result.status.id > 2) {
             return result;
         }
         
-        await new Promise(resolve => setTimeout(resolve, interval));
+        await new Promise(resolve => setTimeout(resolve, delay));
+        delay = Math.min(delay * 1.3, 2000);
     }
     
-    throw new Error('编译超时，请稍后重试');
+    throw new Error('编译超时');
 }
 
 // 运行代码
 async function runCode() {
+    if (isRunning) {
+        console.log('正在运行中，忽略请求');
+        return;
+    }
+    
     const sourceCode = editor.getValue();
     const stdin = stdinInput.value;
+
+    // 代码长度检查
+    if (sourceCode.length > MAX_CODE_LENGTH) {
+        showOutput(`代码过长（超过 ${MAX_CODE_LENGTH/1024}KB 限制）`, true);
+        return;
+    }
 
     if (!sourceCode.trim()) {
         showOutput('请输入代码', true);
         return;
     }
 
-    // 禁用按钮，显示加载中
+    // 冷却时间检查
+    const now = Date.now();
+    const elapsed = now - lastSubmitTime;
+    if (elapsed < COOLDOWN_MS && lastSubmitTime > 0) {
+        const wait = Math.ceil((COOLDOWN_MS - elapsed) / 1000);
+        showOutput(`请求太频繁，请等待 ${wait} 秒后重试`, true);
+        return;
+    }
+
+    isRunning = true;
+    lastSubmitTime = now;
     runBtn.disabled = true;
-    runBtn.innerHTML = '<span class="spinner"></span> 编译中...';
+    runBtn.textContent = '编译中...';
     showLoading();
     hideStatus();
 
     try {
-        // 提交代码
         const { token } = await submitCode(sourceCode, stdin);
-        
-        // 轮询获取结果
         const result = await pollResult(token);
         
-        // 显示结果
         updateStatus(result.status.id);
         
         let output = '';
         
-        // 编译输出（如果有错误）
         if (result.compile_output) {
-            output += `=== 编译输出 ===\n${result.compile_output}\n\n`;
+            output += `[编译输出]\n${result.compile_output}\n\n`;
         }
         
-        // 标准输出
         if (result.stdout) {
-            output += `=== 输出 ===\n${result.stdout}`;
+            output += `[输出]\n${result.stdout}`;
         }
         
-        // 标准错误
         if (result.stderr) {
-            output += `=== 错误 ===\n${result.stderr}`;
+            output += `[错误]\n${result.stderr}`;
         }
         
-        // 如果没有任何输出
+        if (result.message) {
+            output += `[信息]\n${result.message}\n`;
+        }
+        
         if (!output && result.status.id === 3) {
             output = '程序运行成功，无输出';
         }
         
-        // 显示时间/内存使用
-        if (result.time && result.memory) {
-            output += `\n\n=== 资源使用 ===\n时间: ${result.time}s | 内存: ${result.memory} KB`;
+        if (result.time !== null && result.memory !== null) {
+            output += `\n\n[资源] 时间: ${result.time}s | 内存: ${result.memory} KB`;
         }
         
         const isError = result.status.id >= 4;
@@ -205,23 +240,28 @@ async function runCode() {
     } catch (error) {
         nextProxy();
         updateStatus(10);
-        showOutput(`错误: ${error.message}\n已切换代理，请重试`, true);
+        
+        let errorMsg = error.message;
+        if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError')) {
+            errorMsg = '网络连接失败，请检查网络';
+        } else if (errorMsg.includes('429')) {
+            errorMsg = '请求过于频繁，Judge0 已限流';
+        }
+        
+        showOutput(`错误: ${errorMsg}\n已切换代理，请重试`, true);
         console.error('编译错误:', error);
     } finally {
+        isRunning = false;
         runBtn.disabled = false;
-        runBtn.innerHTML = `
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M8 5v14l11-7z"/>
-            </svg>
-            编译运行
-        `;
+        runBtn.textContent = '编译运行';
     }
 }
 
 // 清空代码
 function clearCode() {
     editor.setValue('');
-    showOutput('<span class="placeholder">点击"编译运行"查看结果...</span>');
+    outputEl.textContent = '点击"编译运行"查看结果...';
+    outputEl.style.color = 'var(--text-secondary)';
     hideStatus();
     stdinInput.value = '';
 }
