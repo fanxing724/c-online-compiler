@@ -1,7 +1,7 @@
 // Judge0 API 配置
 const JUDGE0_API_URL = 'https://ce.judge0.com';
 const C_LANGUAGE_ID = 50; // C (GCC 12.2.0)
-const CORS_PROXY = 'https://corsproxy.io/?';
+const CORS_PROXY = 'https://corsproxy.org/?';
 
 // 默认 C 代码模板
 const DEFAULT_CODE = `#include <stdio.h>
