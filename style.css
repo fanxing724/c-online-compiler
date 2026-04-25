@@ -21,6 +21,11 @@
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     background-color: var(--bg-color);
+    background-image: url('https://list.yppp.net/d/image/2026-04-03-c1e67c77aec9e74001a5a1ff326ace73.png');
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+    background-repeat: no-repeat;
     color: var(--text-primary);
     min-height: 100vh;
     display: flex;
