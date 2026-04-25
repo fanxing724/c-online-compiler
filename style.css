@@ -247,13 +247,7 @@ footer {
     color: #60a5fa;
     font-weight: bold;
     font-size: 1rem;
-    text-shadow: 0 0 10px rgba(96, 165, 250, 0.5);
-    animation: glow 2s ease-in-out infinite alternate;
-}
-
-@keyframes glow {
-    from { text-shadow: 0 0 5px rgba(96, 165, 250, 0.3); }
-    to { text-shadow: 0 0 15px rgba(96, 165, 250, 0.8), 0 0 25px rgba(96, 165, 250, 0.4); }
+    text-shadow: 0 0 5px rgba(96, 165, 250, 0.3);
 }
 
 /* 手机端竖屏提示 */
