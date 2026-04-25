@@ -79,9 +79,9 @@ function showLoading() {
     outputEl.style.color = 'var(--text-secondary)';
 }
 
-// 提交代码到 Judge0（同步等待结果）
+// 提交代码到 Judge0（同步等待结果，base64编码）
 async function submitCode(sourceCode, stdin = '') {
-    const url = `${JUDGE0_API_URL}/submissions?base64_encoded=false&wait=true`;
+    const url = `${JUDGE0_API_URL}/submissions?base64_encoded=true&wait=true`;
     console.log('提交到:', url);
     
     const response = await fetch(url, {
@@ -89,8 +89,8 @@ async function submitCode(sourceCode, stdin = '') {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             language_id: C_LANGUAGE_ID,
-            source_code: sourceCode,
-            stdin: stdin,
+            source_code: btoa(unescape(encodeURIComponent(sourceCode))),
+            stdin: stdin ? btoa(unescape(encodeURIComponent(stdin))) : '',
             cpu_time_limit: 5,
             memory_limit: 128000
         })
@@ -146,24 +146,30 @@ async function runCode() {
     try {
         const result = await submitCode(sourceCode, stdin);
         
+        // 解码 base64 结果
+        const stdout = result.stdout ? decodeURIComponent(escape(atob(result.stdout))) : '';
+        const stderr = result.stderr ? decodeURIComponent(escape(atob(result.stderr))) : '';
+        const compileOutput = result.compile_output ? decodeURIComponent(escape(atob(result.compile_output))) : '';
+        const message = result.message || '';
+        
         updateStatus(result.status.id);
         
         let output = '';
         
-        if (result.compile_output) {
-            output += `[编译输出]\n${result.compile_output}\n\n`;
+        if (compileOutput) {
+            output += `[编译输出]\n${compileOutput}\n\n`;
         }
         
-        if (result.stdout) {
-            output += `[输出]\n${result.stdout}`;
+        if (stdout) {
+            output += `[输出]\n${stdout}`;
         }
         
-        if (result.stderr) {
-            output += `[错误]\n${result.stderr}`;
+        if (stderr) {
+            output += `[错误]\n${stderr}`;
         }
         
-        if (result.message) {
-            output += `[信息]\n${result.message}\n`;
+        if (message) {
+            output += `[信息]\n${message}\n`;
         }
         
         if (!output && result.status.id === 3) {
