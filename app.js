@@ -79,9 +79,9 @@ function showLoading() {
     outputEl.style.color = 'var(--text-secondary)';
 }
 
-// 提交代码到 Judge0（直连）
+// 提交代码到 Judge0（同步等待结果）
 async function submitCode(sourceCode, stdin = '') {
-    const url = `${JUDGE0_API_URL}/submissions?base64_encoded=false&wait=false`;
+    const url = `${JUDGE0_API_URL}/submissions?base64_encoded=false&wait=true`;
     console.log('提交到:', url);
     
     const response = await fetch(url, {
@@ -98,42 +98,21 @@ async function submitCode(sourceCode, stdin = '') {
 
     if (!response.ok) {
         const errText = await response.text();
-        throw new Error(`提交失败 (${response.status})`);
+        throw new Error(`提交失败 (${response.status}): ${errText.substring(0, 200)}`);
     }
 
-    const data = await response.json();
-    console.log('Token:', data.token);
-    return data;
+    const result = await response.json();
+    console.log('结果:', result);
+    return result;
 }
 
-// 获取提交结果（直连）
+// 不再需要轮询
 async function getResult(token) {
-    const url = `${JUDGE0_API_URL}/submissions/${token}?base64_encoded=false`;
-    const response = await fetch(url);
-    if (!response.ok) {
-        throw new Error(`获取结果失败`);
-    }
-    return await response.json();
+    return null; // 不再使用
 }
 
-// 轮询结果
 async function pollResult(token) {
-    let delay = 800;
-    const maxAttempts = 50;
-    
-    for (let i = 0; i < maxAttempts; i++) {
-        const result = await getResult(token);
-        console.log('轮询结果, 状态:', result.status.id);
-        
-        if (result.status.id > 2) {
-            return result;
-        }
-        
-        await new Promise(resolve => setTimeout(resolve, delay));
-        delay = Math.min(delay * 1.3, 2000);
-    }
-    
-    throw new Error('编译超时');
+    return null; // 不再使用
 }
 
 // 运行代码
@@ -174,8 +153,7 @@ async function runCode() {
     hideStatus();
 
     try {
-        const { token } = await submitCode(sourceCode, stdin);
-        const result = await pollResult(token);
+        const result = await submitCode(sourceCode, stdin);
         
         updateStatus(result.status.id);
         
@@ -201,7 +179,8 @@ async function runCode() {
             output = '程序运行成功，无输出';
         }
         
-        if (result.time !== null && result.memory !== null) {
+        if (result.time !== null && result.time !== undefined && 
+            result.memory !== null && result.memory !== undefined) {
             output += `\n\n[资源] 时间: ${result.time}s | 内存: ${result.memory} KB`;
         }
         
