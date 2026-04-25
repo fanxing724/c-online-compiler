@@ -35,8 +35,9 @@ body {
 header {
     text-align: center;
     padding: 2rem 1rem;
-    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    background: rgba(30, 41, 59, 0.7);
     border-bottom: 1px solid var(--border-color);
+    backdrop-filter: blur(10px);
 }
 
 header h1 {
@@ -88,8 +89,9 @@ header p {
     justify-content: space-between;
     align-items: center;
     padding: 0.75rem 1rem;
-    background-color: var(--surface-color);
-    border: 1px solid var(--border-color);
+    background-color: rgba(30, 41, 59, 0.75);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(51, 65, 85, 0.6);
     border-radius: 8px 8px 0 0;
     font-weight: 500;
 }
@@ -140,10 +142,12 @@ header p {
 .CodeMirror {
     flex: 1;
     min-height: 500px;
-    border: 1px solid var(--border-color);
+    border: 1px solid rgba(51, 65, 85, 0.6);
     border-radius: 0 0 8px 8px;
     font-size: 14px;
     line-height: 1.6;
+    background: rgba(15, 23, 42, 0.8);
+    backdrop-filter: blur(8px);
 }
 
 .CodeMirror:focus-within {
@@ -155,8 +159,9 @@ header p {
     flex: 1;
     min-height: 250px;
     padding: 1rem;
-    background-color: var(--surface-color);
-    border: 1px solid var(--border-color);
+    background-color: rgba(30, 41, 59, 0.75);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(51, 65, 85, 0.6);
     border-radius: 0 0 8px 8px;
     font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
     font-size: 14px;
@@ -176,8 +181,9 @@ header p {
     width: 100%;
     min-height: 120px;
     padding: 1rem;
-    background-color: var(--surface-color);
-    border: 1px solid var(--border-color);
+    background-color: rgba(30, 41, 59, 0.75);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(51, 65, 85, 0.6);
     border-radius: 0 0 8px 8px;
     color: var(--text-primary);
     font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
