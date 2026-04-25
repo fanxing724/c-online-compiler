@@ -1,7 +1,24 @@
 // Judge0 API 配置
 const JUDGE0_API_URL = 'https://ce.judge0.com';
 const C_LANGUAGE_ID = 50; // C (GCC 12.2.0)
-const CORS_PROXY = 'https://corsproxy.org/?';
+
+// 多个CORS代理，自动切换
+const CORS_PROXIES = [
+    'https://corsproxy.org/?',
+    'https://corsproxy.io/?',
+    'https://api.allorigins.win/raw?url=',
+    'https://api.codetabs.com/v1/proxy?quest='
+];
+
+let proxyIndex = 0;
+
+function getCorsProxy() {
+    return CORS_PROXIES[proxyIndex % CORS_PROXIES.length];
+}
+
+function nextProxy() {
+    proxyIndex++;
+}
 
 // 默认 C 代码模板
 const DEFAULT_CODE = `#include <stdio.h>
@@ -77,7 +94,8 @@ function showLoading() {
 
 // 提交代码到 Judge0
 async function submitCode(sourceCode, stdin = '') {
-    const url = CORS_PROXY + encodeURIComponent(`${JUDGE0_API_URL}/submissions?base64_encoded=false&wait=false`);
+    const proxy = getCorsProxy();
+    const url = proxy + encodeURIComponent(`${JUDGE0_API_URL}/submissions?base64_encoded=false&wait=false`);
     const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -101,7 +119,8 @@ async function submitCode(sourceCode, stdin = '') {
 
 // 获取提交结果
 async function getResult(token) {
-    const url = CORS_PROXY + encodeURIComponent(`${JUDGE0_API_URL}/submissions/${token}?base64_encoded=false`);
+    const proxy = getCorsProxy();
+    const url = proxy + encodeURIComponent(`${JUDGE0_API_URL}/submissions/${token}?base64_encoded=false`);
     const response = await fetch(url);
     
     if (!response.ok) {
@@ -184,8 +203,9 @@ async function runCode() {
         showOutput(output || '无输出', isError);
         
     } catch (error) {
+        nextProxy();
         updateStatus(10);
-        showOutput(`错误: ${error.message}`, true);
+        showOutput(`错误: ${error.message}\n已切换代理，请重试`, true);
         console.error('编译错误:', error);
     } finally {
         runBtn.disabled = false;
