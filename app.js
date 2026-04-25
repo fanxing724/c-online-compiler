@@ -4,26 +4,11 @@ const C_LANGUAGE_ID = 50; // C (GCC 12.2.0)
 const COOLDOWN_MS = 5000; // 5秒请求冷却
 const MAX_CODE_LENGTH = 32768; // 32KB 代码限制
 
-// 多个CORS代理，自动切换
-const CORS_PROXIES = [
-    'https://corsproxy.org/?',
-    'https://corsproxy.io/?',
-    'https://api.allorigins.win/raw?url=',
-    'https://api.codetabs.com/v1/proxy?quest='
-];
+// 使用 codetabs 代理（较稳定）
+const CORS_PROXY = 'https://api.codetabs.com/v1/proxy?quest=';
 
-let proxyIndex = 0;
 let lastSubmitTime = 0;
 let isRunning = false;
-
-function getCorsProxy() {
-    return CORS_PROXIES[proxyIndex % CORS_PROXIES.length];
-}
-
-function nextProxy() {
-    proxyIndex++;
-    console.log('切换代理到:', getCorsProxy());
-}
 
 // 默认 C 代码模板
 const DEFAULT_CODE = `#include <stdio.h>
@@ -99,18 +84,14 @@ function showLoading() {
 
 // 提交代码到 Judge0
 async function submitCode(sourceCode, stdin = '') {
-    const proxy = getCorsProxy();
     const targetUrl = `${JUDGE0_API_URL}/submissions?base64_encoded=false&wait=false`;
-    const url = proxy + encodeURIComponent(targetUrl);
+    const url = CORS_PROXY + encodeURIComponent(targetUrl);
     
-    console.log('使用代理:', proxy);
-    console.log('目标地址:', targetUrl);
+    console.log('目标:', targetUrl);
     
     const response = await fetch(url, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             language_id: C_LANGUAGE_ID,
             source_code: sourceCode,
@@ -122,26 +103,23 @@ async function submitCode(sourceCode, stdin = '') {
 
     if (!response.ok) {
         const errText = await response.text();
-        throw new Error(`提交失败 (${response.status}): ${errText.substring(0, 200)}`);
+        throw new Error(`提交失败 (${response.status})`);
     }
 
     const data = await response.json();
-    console.log('提交成功, token:', data.token);
+    console.log('Token:', data.token);
     return data;
 }
 
 // 获取提交结果
 async function getResult(token) {
-    const proxy = getCorsProxy();
     const targetUrl = `${JUDGE0_API_URL}/submissions/${token}?base64_encoded=false`;
-    const url = proxy + encodeURIComponent(targetUrl);
+    const url = CORS_PROXY + encodeURIComponent(targetUrl);
     
     const response = await fetch(url);
-    
     if (!response.ok) {
-        throw new Error(`获取结果失败 (${response.status})`);
+        throw new Error(`获取结果失败`);
     }
-
     return await response.json();
 }
 
@@ -238,7 +216,6 @@ async function runCode() {
         showOutput(output || '无输出', isError);
         
     } catch (error) {
-        nextProxy();
         updateStatus(10);
         
         let errorMsg = error.message;
@@ -248,7 +225,7 @@ async function runCode() {
             errorMsg = '请求过于频繁，Judge0 已限流';
         }
         
-        showOutput(`错误: ${errorMsg}\n已切换代理，请重试`, true);
+        showOutput(`错误: ${errorMsg}`, true);
         console.error('编译错误:', error);
     } finally {
         isRunning = false;
