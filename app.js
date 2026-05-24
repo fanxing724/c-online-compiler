@@ -42,6 +42,11 @@ const clearBtn = document.getElementById('clearBtn');
 const outputEl = document.getElementById('output');
 const statusBadge = document.getElementById('statusBadge');
 const stdinInput = document.getElementById('stdinInput');
+const appVersion = document.getElementById('appVersion');
+
+if (appVersion) {
+    appVersion.textContent = APP_CONFIG.version || 'dev';
+}
 
 function toBase64Utf8(text) {
     const bytes = new TextEncoder().encode(text);

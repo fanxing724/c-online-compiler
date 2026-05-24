@@ -9,7 +9,8 @@
 - `style.css`：桌面端和移动端样式
 - `server.js`：Render/Node 后端，负责调用 Judge0
 - `package.json`：Render 启动配置
-- `proxy/index.js`：EdgeOne Functions 代理
+- `edge-functions/proxy.js`：EdgeOne Pages 函数，部署后自动生成 `/proxy`
+- `proxy/index.js`：备用 EdgeOne/边缘代理代码
 - `worker/index.js`：Cloudflare Worker 代理
 - `_routes.json`：EdgeOne Pages 路由配置
 
@@ -28,6 +29,8 @@ python3 -m http.server 8080
 ```text
 http://localhost:8080
 ```
+
+页面底部会显示版本号。部署后如果没看到新版本，说明 EdgeOne 还没有构建到最新提交或浏览器缓存未刷新。
 
 ## 推荐部署：EdgeOne Pages + EdgeOne Functions
 
@@ -64,29 +67,33 @@ Node 版本：不用设置
 
 ### 3. 配置函数
 
-仓库里已经有 EdgeOne 函数文件：
+仓库里已经有 EdgeOne Pages 函数文件：
 
 ```text
-proxy/index.js
+edge-functions/proxy.js
 ```
 
-部署后需要让 `/proxy` 路径走这个函数。不同控制台版本入口名字可能略有不同，通常在：
+部署后 EdgeOne 会自动把它映射成：
 
 ```text
-Pages 项目 → Functions / 函数 → 新建函数
+/proxy
 ```
 
-函数名建议填：
+不需要你在控制台手动新建函数。只要仓库里存在这个路径，重新部署后 `/proxy` 就应该可用。
+
+可以直接打开下面这个地址测试函数是否生效：
 
 ```text
-proxy
+https://你的域名/proxy
 ```
 
-代码内容使用仓库里的：
+如果返回：
 
 ```text
-proxy/index.js
+Missing url parameter
 ```
+
+说明函数路由已经生效。
 
 ### 4. 前端配置
 
@@ -111,8 +118,7 @@ Hello, World!
 
 如果页面能打开但运行失败，重点检查：
 
-- `/proxy` 函数是否存在
-- 函数是否使用了 `proxy/index.js`
+- `/proxy` 打开后是否返回 `Missing url parameter`
 - Pages 项目是否重新部署了最新提交
 
 ## 其他代理方式
