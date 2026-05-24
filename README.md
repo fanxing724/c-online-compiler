@@ -29,26 +29,101 @@ python3 -m http.server 8080
 http://localhost:8080
 ```
 
-## Judge0 代理
+## 推荐部署：EdgeOne Pages + EdgeOne Functions
 
-浏览器直接请求 `https://ce.judge0.com` 可能遇到 CORS 或限流问题。推荐使用 Render 后端。整站部署到 Render 时，在 `index.html` 中保持：
+这个项目推荐直接部署到 EdgeOne。前端放在 Pages，Judge0 请求通过 EdgeOne Functions 的 `/proxy` 转发。
+
+### 1. 创建 Pages 项目
+
+1. 打开 EdgeOne 控制台
+2. 进入 `Pages`
+3. 新建项目
+4. 选择 `Git 仓库`
+5. 选择 Gitee 仓库：
+
+```text
+knight3fax/c-online-compiler
+```
+
+如果 EdgeOne 没有自动识别 Gitee，可以选择从 Git URL 导入：
+
+```text
+https://gitee.com/knight3fax/c-online-compiler.git
+```
+
+### 2. 构建配置
+
+这是纯静态项目，不需要构建。
+
+```text
+框架预设：Other / Static
+构建命令：留空
+输出目录：/
+Node 版本：不用设置
+```
+
+### 3. 配置函数
+
+仓库里已经有 EdgeOne 函数文件：
+
+```text
+proxy/index.js
+```
+
+部署后需要让 `/proxy` 路径走这个函数。不同控制台版本入口名字可能略有不同，通常在：
+
+```text
+Pages 项目 → Functions / 函数 → 新建函数
+```
+
+函数名建议填：
+
+```text
+proxy
+```
+
+代码内容使用仓库里的：
+
+```text
+proxy/index.js
+```
+
+### 4. 前端配置
+
+`index.html` 已经默认配置为 EdgeOne 代理模式：
 
 ```js
 window.__APP_CONFIG__ = {
     judge0ApiUrl: 'https://ce.judge0.com',
-    judge0ProxyUrl: '',
-    useProxy: false,
-    backendRunUrl: window.location.origin
+    judge0ProxyUrl: '/proxy',
+    useProxy: true,
+    backendRunUrl: ''
 };
 ```
+
+### 5. 验证
+
+部署完成后打开 Pages 分配的域名，点击 `编译运行`。成功时输出应包含：
+
+```text
+Hello, World!
+```
+
+如果页面能打开但运行失败，重点检查：
+
+- `/proxy` 函数是否存在
+- 函数是否使用了 `proxy/index.js`
+- Pages 项目是否重新部署了最新提交
+
+## 其他代理方式
 
 EdgeOne Functions 使用 `proxy/index.js`。
 
 Cloudflare Worker 使用 `worker/index.js`。
 
-## Render 后端部署
+## 可选：Render 后端部署
 
-Render 更适合做稳定后端。部署方式：
+如果以后改用 GitHub，也可以用 Render。部署方式：
 
 1. 在 Render 新建 `Web Service`
 2. 连接本仓库
