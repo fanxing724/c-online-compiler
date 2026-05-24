@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="mobile-hint">请将手机横屏使用</div>
+    <div class="mobile-hint">手机端建议横屏使用，竖屏也可以编辑和运行</div>
     
     <header>
         <h1>FanXing Online C</h1>
@@ -25,7 +25,7 @@
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M8 5v14l11-7z"/>
                         </svg>
-                        编译运行
+                        <span id="runBtnLabel">编译运行</span>
                     </button>
                     <button id="clearBtn" class="btn btn-secondary">清空</button>
                 </div>
@@ -50,9 +50,18 @@
     </main>
 
     <footer>
-        <p class="footer-highlight">声明主权：番星 | 联系修复：QQ 3509412293</p>
+        <p class="footer-highlight">FanXing Online C</p>
         <p>基于 Judge0 API | 托管于 EdgeOne Pages</p>
     </footer>
+
+    <script>
+        window.__APP_CONFIG__ = {
+            judge0ApiUrl: 'https://ce.judge0.com',
+            judge0ProxyUrl: '',
+            useProxy: false,
+            backendRunUrl: window.location.origin
+        };
+    </script>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/clike/clike.min.js"></script>

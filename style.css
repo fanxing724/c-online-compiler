@@ -250,35 +250,21 @@ footer {
     text-shadow: 0 0 5px rgba(96, 165, 250, 0.3);
 }
 
-/* 手机端竖屏提示 */
-@media (max-width: 768px) and (orientation: portrait) {
-    .mobile-hint {
-        display: flex;
-    }
-    .container, header, footer {
-        display: none;
-    }
-}
-
 .mobile-hint {
     display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
     width: 100%;
-    height: 100%;
-    background: rgba(15, 23, 42, 0.95);
+    padding: 0.5rem 1rem;
+    background: rgba(245, 158, 11, 0.16);
     color: var(--text-primary);
-    align-items: center;
-    justify-content: center;
-    font-size: 1.5rem;
-    font-weight: bold;
-    z-index: 9999;
     text-align: center;
+    font-size: 0.85rem;
 }
 
-/* 手机竖屏单列布局 */
-@media (max-width: 768px) and (orientation: landscape) {
+/* 手机端单列布局 */
+@media (max-width: 768px) {
+    .mobile-hint {
+        display: block;
+    }
     header h1 {
         font-size: 1.3rem;
     }
@@ -300,7 +286,7 @@ footer {
         grid-row: auto;
     }
     .CodeMirror {
-        min-height: 200px;
+        min-height: 260px;
         font-size: 13px;
     }
     .output-content {

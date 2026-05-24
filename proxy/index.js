@@ -3,7 +3,17 @@
 
 export default {
   async fetch(request, env) {
-    // 只允许 GET 和 POST
+    if (request.method === 'OPTIONS') {
+      return new Response(null, {
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type',
+          'Access-Control-Max-Age': '86400',
+        }
+      });
+    }
+
     if (request.method !== 'GET' && request.method !== 'POST') {
       return new Response('Method not allowed', { status: 405 });
     }
@@ -15,41 +25,33 @@ export default {
       return new Response('Missing url parameter', { status: 400 });
     }
 
-    // 安全校验：只允许请求 judge0 域名
+    let target;
     try {
-      const target = new URL(targetUrl);
-      if (!target.hostname.endsWith('judge0.com')) {
-        return new Response('Forbidden domain', { status: 403 });
-      }
+      target = new URL(targetUrl);
     } catch {
       return new Response('Invalid URL', { status: 400 });
     }
 
-    // 构建请求头
-    const headers = new Headers();
-    headers.set('Content-Type', 'application/json');
-    
-    // 转发请求到 Judge0
-    const response = await fetch(targetUrl, {
+    if (target.hostname !== 'ce.judge0.com' && !target.hostname.endsWith('.judge0.com')) {
+      return new Response('Forbidden domain', { status: 403 });
+    }
+
+    const response = await fetch(target.toString(), {
       method: request.method,
-      headers: headers,
+      headers: {
+        'Content-Type': 'application/json',
+      },
       body: request.method === 'POST' ? await request.text() : undefined,
     });
 
-    // 返回结果，添加 CORS 头
-    const corsHeaders = new Headers(response.headers);
-    corsHeaders.set('Access-Control-Allow-Origin', '*');
-    corsHeaders.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    corsHeaders.set('Access-Control-Allow-Headers', 'Content-Type');
-
-    // 处理 OPTIONS 预检请求
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: corsHeaders });
-    }
+    const headers = new Headers(response.headers);
+    headers.set('Access-Control-Allow-Origin', '*');
+    headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    headers.set('Access-Control-Allow-Headers', 'Content-Type');
 
     return new Response(await response.text(), {
       status: response.status,
-      headers: corsHeaders,
+      headers
     });
   }
 };

@@ -1,5 +1,9 @@
 // Judge0 API 配置
-const JUDGE0_API_URL = 'https://ce.judge0.com';
+const APP_CONFIG = window.__APP_CONFIG__ || {};
+const JUDGE0_API_URL = APP_CONFIG.judge0ApiUrl || 'https://ce.judge0.com';
+const JUDGE0_PROXY_URL = APP_CONFIG.judge0ProxyUrl || '';
+const BACKEND_RUN_URL = APP_CONFIG.backendRunUrl || '';
+const USE_PROXY = APP_CONFIG.useProxy !== false && Boolean(JUDGE0_PROXY_URL);
 const C_LANGUAGE_ID = 50; // C (GCC 12.2.0)
 const COOLDOWN_MS = 5000; // 5秒请求冷却
 const MAX_CODE_LENGTH = 32768; // 32KB 代码限制
@@ -33,10 +37,47 @@ editor.setValue(DEFAULT_CODE);
 
 // DOM 元素
 const runBtn = document.getElementById('runBtn');
+const runBtnLabel = document.getElementById('runBtnLabel');
 const clearBtn = document.getElementById('clearBtn');
 const outputEl = document.getElementById('output');
 const statusBadge = document.getElementById('statusBadge');
 const stdinInput = document.getElementById('stdinInput');
+
+function toBase64Utf8(text) {
+    const bytes = new TextEncoder().encode(text);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    }
+    return btoa(binary);
+}
+
+function fromBase64Utf8(text) {
+    return new TextDecoder().decode(Uint8Array.from(atob(text), c => c.charCodeAt(0)));
+}
+
+function buildJudge0Url() {
+    if (!USE_PROXY) {
+        return `${JUDGE0_API_URL}/submissions?base64_encoded=true&wait=true`;
+    }
+
+    const target = `${JUDGE0_API_URL}/submissions?base64_encoded=true&wait=true`;
+    return `${JUDGE0_PROXY_URL}?url=${encodeURIComponent(target)}`;
+}
+
+function buildBackendRunUrl() {
+    return BACKEND_RUN_URL ? `${BACKEND_RUN_URL.replace(/\/$/, '')}/api/run` : '';
+}
+
+function normalizeJudge0Result(result) {
+    return {
+        ...result,
+        stdout: result.stdout ? fromBase64Utf8(result.stdout) : '',
+        stderr: result.stderr ? fromBase64Utf8(result.stderr) : '',
+        compile_output: result.compile_output ? fromBase64Utf8(result.compile_output) : '',
+        message: result.message || ''
+    };
+}
 
 // 状态映射
 const STATUS_MAP = {
@@ -79,18 +120,46 @@ function showLoading() {
     outputEl.style.color = 'var(--text-secondary)';
 }
 
+function setRunningState(running) {
+    isRunning = running;
+    runBtn.disabled = running;
+    runBtnLabel.textContent = running ? '编译中...' : '编译运行';
+}
+
 // 提交代码到 Judge0（同步等待结果，base64编码）
 async function submitCode(sourceCode, stdin = '') {
-    const url = `${JUDGE0_API_URL}/submissions?base64_encoded=true&wait=true`;
+    const backendUrl = buildBackendRunUrl();
+
+    if (backendUrl) {
+        console.log('提交到后端:', backendUrl);
+        const response = await fetch(backendUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                source_code: sourceCode,
+                stdin,
+                language_id: C_LANGUAGE_ID
+            })
+        });
+
+        if (!response.ok) {
+            const errText = await response.text();
+            throw new Error(`提交失败 (${response.status}): ${errText.substring(0, 200)}`);
+        }
+
+        return await response.json();
+    }
+
+    const url = buildJudge0Url();
     console.log('提交到:', url);
-    
+
     const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             language_id: C_LANGUAGE_ID,
-            source_code: btoa(unescape(encodeURIComponent(sourceCode))),
-            stdin: stdin ? btoa(unescape(encodeURIComponent(stdin))) : '',
+            source_code: toBase64Utf8(sourceCode),
+            stdin: stdin ? toBase64Utf8(stdin) : '',
             cpu_time_limit: 5,
             memory_limit: 128000
         })
@@ -103,7 +172,7 @@ async function submitCode(sourceCode, stdin = '') {
 
     const result = await response.json();
     console.log('结果:', JSON.stringify(result, null, 2));
-    return result;
+    return normalizeJudge0Result(result);
 }
 
 // 运行代码
@@ -136,23 +205,24 @@ async function runCode() {
         return;
     }
 
-    isRunning = true;
+    setRunningState(true);
     lastSubmitTime = now;
-    runBtn.disabled = true;
-    runBtn.textContent = '编译中...';
     showLoading();
     hideStatus();
 
     try {
         const result = await submitCode(sourceCode, stdin);
         
-        // 解码 base64 结果
-        const stdout = result.stdout ? decodeURIComponent(escape(atob(result.stdout))) : '';
-        const stderr = result.stderr ? decodeURIComponent(escape(atob(result.stderr))) : '';
-        const compileOutput = result.compile_output ? decodeURIComponent(escape(atob(result.compile_output))) : '';
+        const stdout = result.stdout || '';
+        const stderr = result.stderr || '';
+        const compileOutput = result.compile_output || '';
         const message = result.message || '';
-        
-        updateStatus(result.status.id);
+
+        const statusId = result.status && typeof result.status.id === 'number'
+            ? result.status.id
+            : 10;
+
+        updateStatus(statusId);
         
         let output = '';
         
@@ -172,7 +242,7 @@ async function runCode() {
             output += `[信息]\n${message}\n`;
         }
         
-        if (!output && result.status.id === 3) {
+        if (!output && statusId === 3) {
             output = '程序运行成功，无输出';
         }
         
@@ -181,7 +251,7 @@ async function runCode() {
             output += `\n\n[资源] 时间: ${result.time}s | 内存: ${result.memory} KB`;
         }
         
-        const isError = result.status.id >= 4;
+        const isError = statusId >= 4;
         showOutput(output || '无输出', isError);
         
     } catch (error) {
@@ -197,16 +267,14 @@ async function runCode() {
         showOutput(`错误: ${errorMsg}`, true);
         console.error('编译错误:', error);
     } finally {
-        isRunning = false;
-        runBtn.disabled = false;
-        runBtn.textContent = '编译运行';
+        setRunningState(false);
     }
 }
 
 // 清空代码
 function clearCode() {
     editor.setValue('');
-    outputEl.textContent = '点击"编译运行"查看结果...';
+    outputEl.textContent = '点击“编译运行”查看结果...';
     outputEl.style.color = 'var(--text-secondary)';
     hideStatus();
     stdinInput.value = '';
