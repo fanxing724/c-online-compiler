@@ -7,6 +7,7 @@ const USE_PROXY = APP_CONFIG.useProxy !== false && Boolean(JUDGE0_PROXY_URL);
 const C_LANGUAGE_ID = 50; // C (GCC 12.2.0)
 const COOLDOWN_MS = 5000; // 5秒请求冷却
 const MAX_CODE_LENGTH = 32768; // 32KB 代码限制
+const STORAGE_KEY = 'fanxing_c_compiler_code';
 
 let lastSubmitTime = 0;
 let isRunning = false;
@@ -15,7 +16,7 @@ let isRunning = false;
 const DEFAULT_CODE = `#include <stdio.h>
 
 int main() {
-    printf("Hello, World!\\n");
+    printf(“Hello, World!\\n”);
     return 0;
 }`;
 
@@ -32,13 +33,25 @@ const editor = CodeMirror.fromTextArea(document.getElementById('codeEditor'), {
     lineWrapping: true
 });
 
-// 设置默认代码
-editor.setValue(DEFAULT_CODE);
+// 恢复上次编辑的代码，或加载默认模板
+const savedCode = localStorage.getItem(STORAGE_KEY);
+editor.setValue(savedCode || DEFAULT_CODE);
+
+// 自动保存（1秒防抖）
+let saveTimer = null;
+editor.on('change', () => {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+        localStorage.setItem(STORAGE_KEY, editor.getValue());
+    }, 1000);
+});
 
 // DOM 元素
 const runBtn = document.getElementById('runBtn');
 const runBtnLabel = document.getElementById('runBtnLabel');
 const clearBtn = document.getElementById('clearBtn');
+const downloadBtn = document.getElementById('downloadBtn');
+const resetBtn = document.getElementById('resetBtn');
 const outputEl = document.getElementById('output');
 const statusBadge = document.getElementById('statusBadge');
 const stdinInput = document.getElementById('stdinInput');
@@ -215,6 +228,8 @@ async function runCode() {
     showLoading();
     hideStatus();
 
+    const startTime = performance.now();
+
     try {
         const result = await submitCode(sourceCode, stdin);
         
@@ -255,6 +270,9 @@ async function runCode() {
             result.memory !== null && result.memory !== undefined) {
             output += `\n\n[资源] 时间: ${result.time}s | 内存: ${result.memory} KB`;
         }
+
+        const elapsedMs = Math.round(performance.now() - startTime);
+        output += `\n[耗时] ${elapsedMs}ms`;
         
         const isError = statusId >= 4;
         showOutput(output || '无输出', isError);
@@ -279,20 +297,47 @@ async function runCode() {
 // 清空代码
 function clearCode() {
     editor.setValue('');
-    outputEl.textContent = '点击“编译运行”查看结果...';
+    outputEl.textContent = '点击”编译运行”查看结果...';
     outputEl.style.color = 'var(--text-secondary)';
     hideStatus();
     stdinInput.value = '';
+    localStorage.removeItem(STORAGE_KEY);
+}
+
+// 重置为默认模板
+function resetToTemplate() {
+    editor.setValue(DEFAULT_CODE);
+    outputEl.innerHTML = '<span class=”placeholder”>点击”编译运行”查看结果...</span>';
+    outputEl.style.color = '';
+    hideStatus();
+    stdinInput.value = '';
+}
+
+// 下载代码为 .c 文件
+function downloadCode() {
+    const code = editor.getValue();
+    if (!code.trim()) return;
+    const blob = new Blob([code], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'main.c';
+    a.click();
+    URL.revokeObjectURL(url);
 }
 
 // 事件监听
 runBtn.addEventListener('click', runCode);
 clearBtn.addEventListener('click', clearCode);
+downloadBtn?.addEventListener('click', downloadCode);
+resetBtn?.addEventListener('click', resetToTemplate);
 
 // 键盘快捷键
 editor.setOption('extraKeys', {
     'Ctrl-Enter': runCode,
-    'Cmd-Enter': runCode
+    'Cmd-Enter': runCode,
+    'Ctrl-S': function() { downloadCode(); },
+    'Cmd-S': function() { downloadCode(); }
 });
 
 // 页面加载完成提示
