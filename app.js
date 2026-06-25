@@ -68,13 +68,6 @@ const editor = CodeMirror.fromTextArea(document.getElementById('codeEditor'), {
     lineWrapping: true
 });
 
-const DEFAULT_CODE = `#include <stdio.h>
-
-int main() {
-    printf("Hello, World!\n");
-    return 0;
-}`;
-
 // localStorage 版本迁移：检测到旧版本时清除旧代码缓存
 const STORAGE_VERSION = 2;
 const savedVersion = localStorage.getItem(STORAGE_KEY + '_version');
