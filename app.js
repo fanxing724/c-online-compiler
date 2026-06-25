@@ -68,18 +68,24 @@ const editor = CodeMirror.fromTextArea(document.getElementById('codeEditor'), {
     lineWrapping: true
 });
 
-// localStorage 版本迁移：检测到旧版本时清除旧代码缓存
+// localStorage 版本迁移 + 强制加载默认模板
+// 旧缓存里可能有弯引号，直接清掉，用默认模板
 const STORAGE_VERSION = 2;
 const savedVersion = localStorage.getItem(STORAGE_KEY + '_version');
 if (savedVersion !== String(STORAGE_VERSION)) {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.setItem(STORAGE_KEY + '_version', STORAGE_VERSION);
-    console.log('[Storage] 已清除旧代码缓存，请重新输入');
 }
-
-// 恢复上次编辑的代码，或加载默认模板
 const savedCode = localStorage.getItem(STORAGE_KEY);
-editor.setValue(savedCode || DEFAULT_CODE);
+// 检查旧缓存是否含有非法字符（弯引号等），有则丢弃用默认模板
+const hasBadChars = savedCode && /[\u201c\u201d\u2018\u2019]/.test(savedCode);
+if (hasBadChars) {
+    localStorage.removeItem(STORAGE_KEY);
+    console.log('[Storage] 检测到旧缓存含非法字符，已丢弃');
+}
+// 用默认模板，除非有干净的已保存代码
+editor.setValue(savedCode && savedCode.trim() && !hasBadChars ? savedCode : DEFAULT_CODE);
+console.log('[Editor] 代码已加载，来源:', savedCode && savedCode.trim() ? 'localStorage' : '默认模板');
 
 // 自动保存（1秒防抖）
 let saveTimer = null;
