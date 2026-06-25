@@ -3,7 +3,18 @@ const fs = require('fs');
 const path = require('path');
 
 const PORT = process.env.PORT || 3000;
-const JUDGE0_URL = process.env.JUDGE0_URL || 'https://ce.judge0.com';
+
+// 多后端配置：JUDGE0_URLS 以逗号分隔，优先级按顺序
+// 例如：https://ce.judge0.com,https://your-backup.com
+const JUDGE0_URLS = (process.env.JUDGE0_URLS || 'https://ce.judge0.com').split(',').map(s => s.trim());
+const FAIL_THRESHOLD = 3;
+const FAIL_COOLDOWN_MS = 5 * 60 * 1000;
+
+// 每个后端的状态跟踪
+const backendState = {};
+JUDGE0_URLS.forEach((url, i) => {
+  backendState[url] = { failCount: 0, lastFail: 0, latency: null };
+});
 
 function encodeBase64Utf8(text) {
   return Buffer.from(text || '', 'utf8').toString('base64');
@@ -29,8 +40,35 @@ async function readBody(req) {
   return Buffer.concat(chunks).toString('utf8');
 }
 
+/**
+ * 获取当前可用后端（排除熔断中的）
+ */
+function getAvailableBackend() {
+  const now = Date.now();
+  for (const url of JUDGE0_URLS) {
+    const state = backendState[url];
+    if (state.failCount >= FAIL_THRESHOLD && now - state.lastFail < FAIL_COOLDOWN_MS) {
+      continue;
+    }
+    return url;
+  }
+  // 所有后端都熔断，取冷却时间最短的
+  const sorted = [...JUDGE0_URLS].sort((a, b) => backendState[a].lastFail - backendState[b].lastFail);
+  backendState[sorted[0]].failCount = 0; // 强制重置
+  return sorted[0];
+}
+
+function markBackendFailed(url) {
+  const state = backendState[url];
+  state.failCount++;
+  state.lastFail = Date.now();
+}
+
 async function runCode(payload) {
-  const response = await fetch(`${JUDGE0_URL}/submissions?base64_encoded=true&wait=true`, {
+  const url = getAvailableBackend();
+  const start = Date.now();
+
+  const response = await fetch(`${url}/submissions?base64_encoded=true&wait=true`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -41,6 +79,13 @@ async function runCode(payload) {
       memory_limit: 128000,
     }),
   });
+
+  backendState[url].latency = Date.now() - start;
+
+  if (!response.ok) {
+    markBackendFailed(url);
+    throw new Error(`Judge0 ${url} 返回 HTTP ${response.status}`);
+  }
 
   const result = await response.json();
   const decodeField = (value) => (value ? decodeBase64Utf8(value) : '');
@@ -53,6 +98,7 @@ async function runCode(payload) {
     status: result.status || { id: 10, description: 'Internal Error' },
     time: result.time ?? null,
     memory: result.memory ?? null,
+    _backend: url, // 用于调试
   };
 }
 
@@ -68,7 +114,11 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.url === '/health') {
-    return sendJson(res, 200, { ok: true });
+    return sendJson(res, 200, { ok: true, backends: JUDGE0_URLS.map(url => ({
+      url,
+      failCount: backendState[url].failCount,
+      latency: backendState[url].latency,
+    }))});
   }
 
   if (req.url === '/api/run' && req.method === 'POST') {
@@ -108,4 +158,5 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`C Online Compiler backend listening on ${PORT}`);
+  console.log(`Configured backends: ${JUDGE0_URLS.join(', ')}`);
 });

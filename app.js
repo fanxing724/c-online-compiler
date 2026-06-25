@@ -1,6 +1,7 @@
-// Judge0 API 配置
+// Judge0 API 多后端管理器
+// 特性：健康检查、自动选择最快后端、故障切换、熔断保护
+
 const APP_CONFIG = window.__APP_CONFIG__ || {};
-const JUDGE0_API_URL = APP_CONFIG.judge0ApiUrl || 'https://ce.judge0.com';
 const JUDGE0_PROXY_URL = APP_CONFIG.judge0ProxyUrl || '';
 const BACKEND_RUN_URL = APP_CONFIG.backendRunUrl || '';
 const USE_PROXY = APP_CONFIG.useProxy !== false && Boolean(JUDGE0_PROXY_URL);
@@ -9,14 +10,48 @@ const COOLDOWN_MS = 5000; // 5秒请求冷却
 const MAX_CODE_LENGTH = 32768; // 32KB 代码限制
 const STORAGE_KEY = 'fanxing_c_compiler_code';
 
+// 熔断阈值
+const FAIL_THRESHOLD = 3;
+const FAIL_COOLDOWN_MS = 5 * 60 * 1000; // 5分钟冷却
+
 let lastSubmitTime = 0;
 let isRunning = false;
+let activeBackend = null;
+let fallbackCount = 0;
+
+// 多后端配置：在此处添加更多 Judge0 实例
+// priority 越小越优先，failCount 连续失败次数
+const BACKENDS = [
+    {
+        id: 'ce',
+        name: 'Judge0 CE (官方)',
+        baseUrl: 'https://ce.judge0.com',
+        priority: 1,
+        enabled: true,
+        failCount: 0,
+        lastFail: 0,
+        latency: null,
+        isHealthy: null
+    },
+    // 添加更多实例示例：
+    // {
+    //     id: 'custom1',
+    //     name: '自建实例 A',
+    //     baseUrl: 'https://your-judge0.example.com',
+    //     priority: 2,
+    //     enabled: true,
+    //     failCount: 0,
+    //     lastFail: 0,
+    //     latency: null,
+    //     isHealthy: null
+    // },
+];
 
 // 默认 C 代码模板
 const DEFAULT_CODE = `#include <stdio.h>
 
 int main() {
-    printf("Hello, World!\\n");
+    printf("Hello, World!\n");
     return 0;
 }`;
 
@@ -56,10 +91,150 @@ const outputEl = document.getElementById('output');
 const statusBadge = document.getElementById('statusBadge');
 const stdinInput = document.getElementById('stdinInput');
 const appVersion = document.getElementById('appVersion');
+const backendStatusEl = document.getElementById('backendStatus');
 
 if (appVersion) {
     appVersion.textContent = APP_CONFIG.version || 'dev';
 }
+
+// ============ 多后端管理器 ============
+
+/**
+ * 获取所有可用后端（排除熔断冷却中的）
+ */
+function getAvailableBackends() {
+    const now = Date.now();
+    return BACKENDS
+        .filter(b => b.enabled && b.isHealthy !== false)
+        .filter(b => {
+            if (b.failCount >= FAIL_THRESHOLD) {
+                return now - b.lastFail > FAIL_COOLDOWN_MS;
+            }
+            return true;
+        })
+        .sort((a, b) => {
+            if (a.priority !== b.priority) return a.priority - b.priority;
+            if (a.latency !== null && b.latency !== null) return a.latency - b.latency;
+            return 0;
+        });
+}
+
+/**
+ * 健康检查：向一个后端发送测试请求，测量延迟
+ */
+async function healthCheck(backend, timeout = 5000) {
+    const testPayload = {
+        language_id: C_LANGUAGE_ID,
+        source_code: toBase64Utf8('int main(){return 0;}'),
+        stdin: '',
+        cpu_time_limit: 1,
+        memory_limit: 128000
+    };
+
+    const url = buildJudge0Url(backend);
+
+    const start = performance.now();
+    try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeout);
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(testPayload),
+            signal: controller.signal
+        });
+
+        clearTimeout(timer);
+        const latency = Math.round(performance.now() - start);
+
+        if (response.ok || response.status === 201 || response.status === 200) {
+            backend.latency = latency;
+            backend.isHealthy = true;
+            backend.failCount = 0;
+            return { ok: true, latency };
+        } else {
+            backend.isHealthy = false;
+            backend.failCount++;
+            backend.lastFail = Date.now();
+            return { ok: false, latency };
+        }
+    } catch (e) {
+        backend.isHealthy = false;
+        backend.failCount++;
+        backend.lastFail = Date.now();
+        return { ok: false, latency: null };
+    }
+}
+
+/**
+ * 并行健康检查所有后端，选出最佳后端
+ */
+async function selectBestBackend() {
+    await Promise.allSettled(
+        BACKENDS.filter(b => b.enabled).map(async (b) => {
+            await healthCheck(b, 5000);
+        })
+    );
+
+    const available = getAvailableBackends();
+    if (available.length === 0) {
+        const allSorted = [...BACKENDS].filter(b => b.enabled)
+            .sort((a, b) => a.lastFail - b.lastFail);
+        if (allSorted.length > 0) {
+            allSorted[0].failCount = 0;
+            activeBackend = allSorted[0];
+        }
+    } else {
+        activeBackend = available[0];
+    }
+
+    updateBackendUI();
+    return activeBackend;
+}
+
+/**
+ * 标记后端失败，切换到下一个
+ */
+function markBackendFailed(backend) {
+    if (!backend) return;
+    backend.failCount++;
+    backend.lastFail = Date.now();
+
+    const available = getAvailableBackends();
+    const next = available.find(b => b.id !== backend.id);
+
+    if (next) {
+        fallbackCount++;
+        activeBackend = next;
+        console.log(`[Backend] ${backend.name} 故障，切换到 ${next.name}`);
+    } else {
+        activeBackend = null;
+        console.log(`[Backend] 所有后端均不可用`);
+    }
+
+    updateBackendUI();
+}
+
+/**
+ * 更新后端状态 UI
+ */
+function updateBackendUI() {
+    if (backendStatusEl) {
+        if (activeBackend) {
+            const latencyStr = activeBackend.latency !== null
+                ? ` (${activeBackend.latency}ms)`
+                : '';
+            backendStatusEl.textContent = activeBackend.name + latencyStr;
+            backendStatusEl.className = 'backend-status healthy';
+        } else {
+            backendStatusEl.textContent = '无可用后端';
+            backendStatusEl.className = 'backend-status error';
+        }
+    }
+}
+
+// ============ 工具函数 ============
 
 function toBase64Utf8(text) {
     const bytes = new TextEncoder().encode(text);
@@ -74,13 +249,10 @@ function fromBase64Utf8(text) {
     return new TextDecoder().decode(Uint8Array.from(atob(text), c => c.charCodeAt(0)));
 }
 
-function buildJudge0Url() {
-    if (!USE_PROXY) {
-        return `${JUDGE0_API_URL}/submissions?base64_encoded=true&wait=true`;
-    }
-
-    const target = `${JUDGE0_API_URL}/submissions?base64_encoded=true&wait=true`;
-    return `${JUDGE0_PROXY_URL}?url=${encodeURIComponent(target)}`;
+function buildJudge0Url(backend) {
+    const base = backend.baseUrl + '/submissions?base64_encoded=true&wait=true';
+    if (!USE_PROXY) return base;
+    return `${JUDGE0_PROXY_URL}?url=${encodeURIComponent(base)}`;
 }
 
 function buildBackendRunUrl() {
@@ -144,10 +316,39 @@ function setRunningState(running) {
     runBtnLabel.textContent = running ? '编译中...' : '编译运行';
 }
 
-// 提交代码到 Judge0（同步等待结果，base64编码）
+// ============ 提交代码（多后端自动切换）============
+
+async function submitToBackend(backend, sourceCode, stdin = '') {
+    const url = buildJudge0Url(backend);
+    const payload = {
+        language_id: C_LANGUAGE_ID,
+        source_code: toBase64Utf8(sourceCode),
+        stdin: stdin ? toBase64Utf8(stdin) : '',
+        cpu_time_limit: 5,
+        memory_limit: 128000
+    };
+
+    const start = performance.now();
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    const latency = Math.round(performance.now() - start);
+
+    if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+    }
+
+    backend.latency = latency;
+    const result = await response.json();
+    return normalizeJudge0Result(result);
+}
+
 async function submitCode(sourceCode, stdin = '') {
     const backendUrl = buildBackendRunUrl();
 
+    // 有后端服务时直接使用
     if (backendUrl) {
         console.log('提交到后端:', backendUrl);
         const response = await fetch(backendUrl, {
@@ -168,42 +369,54 @@ async function submitCode(sourceCode, stdin = '') {
         return await response.json();
     }
 
-    const url = buildJudge0Url();
-    console.log('提交到:', url);
-
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            language_id: C_LANGUAGE_ID,
-            source_code: toBase64Utf8(sourceCode),
-            stdin: stdin ? toBase64Utf8(stdin) : '',
-            cpu_time_limit: 5,
-            memory_limit: 128000
-        })
-    });
-
-    if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`提交失败 (${response.status}): ${errText.substring(0, 200)}`);
+    // 直接提交到 Judge0：多后端自动切换
+    if (!activeBackend) {
+        throw new Error('无可用 Judge0 后端，请检查网络');
     }
 
-    const result = await response.json();
-    console.log('结果:', JSON.stringify(result, null, 2));
-    return normalizeJudge0Result(result);
+    const candidates = getAvailableBackends();
+    if (candidates.length === 0) {
+        throw new Error('所有 Judge0 后端均不可用（可能暂时熔断），请稍后重试');
+    }
+
+    const tried = [];
+    let lastError = null;
+
+    for (const backend of candidates) {
+        tried.push(backend.name);
+        try {
+            console.log(`[Backend] 尝试 ${backend.name}`);
+            const result = await submitToBackend(backend, sourceCode, stdin);
+
+            activeBackend = backend;
+
+            if (backend.id !== candidates[0].id) {
+                fallbackCount++;
+                updateBackendUI();
+            }
+
+            return result;
+        } catch (e) {
+            console.warn(`[Backend] ${backend.name} 失败:`, e.message);
+            markBackendFailed(backend);
+            lastError = e;
+        }
+    }
+
+    throw new Error(`所有后端均失败：${lastError?.message || '未知错误'}。已尝试：${tried.join(' → ')}`);
 }
 
-// 运行代码
+// ============ 运行代码 ============
+
 async function runCode() {
     if (isRunning) {
         console.log('正在运行中，忽略请求');
         return;
     }
-    
+
     const sourceCode = editor.getValue();
     const stdin = stdinInput.value;
 
-    // 代码长度检查
     if (sourceCode.length > MAX_CODE_LENGTH) {
         showOutput(`代码过长（超过 ${MAX_CODE_LENGTH/1024}KB 限制）`, true);
         return;
@@ -214,7 +427,6 @@ async function runCode() {
         return;
     }
 
-    // 冷却时间检查
     const now = Date.now();
     const elapsed = now - lastSubmitTime;
     if (elapsed < COOLDOWN_MS && lastSubmitTime > 0) {
@@ -229,10 +441,11 @@ async function runCode() {
     hideStatus();
 
     const startTime = performance.now();
+    fallbackCount = 0;
 
     try {
         const result = await submitCode(sourceCode, stdin);
-        
+
         const stdout = result.stdout || '';
         const stderr = result.stderr || '';
         const compileOutput = result.compile_output || '';
@@ -243,50 +456,54 @@ async function runCode() {
             : 10;
 
         updateStatus(statusId);
-        
+
         let output = '';
-        
+
         if (compileOutput) {
             output += `[编译输出]\n${compileOutput}\n\n`;
         }
-        
+
         if (stdout) {
             output += `[输出]\n${stdout}`;
         }
-        
+
         if (stderr) {
             output += `[错误]\n${stderr}`;
         }
-        
+
         if (message) {
             output += `[信息]\n${message}\n`;
         }
-        
+
         if (!output && statusId === 3) {
             output = '程序运行成功，无输出';
         }
-        
-        if (result.time !== null && result.time !== undefined && 
-            result.memory !== null && result.memory !== undefined) {
-            output += `\n\n[资源] 时间: ${result.time}s | 内存: ${result.memory} KB`;
-        }
 
         const elapsedMs = Math.round(performance.now() - startTime);
-        output += `\n[耗时] ${elapsedMs}ms`;
-        
+        let meta = `\n[耗时] ${elapsedMs}ms`;
+        if (activeBackend) {
+            meta += ` | 后端: ${activeBackend.name}`;
+        }
+        if (fallbackCount > 0) {
+            meta += ` | 切换: ${fallbackCount}次`;
+        }
+        output += meta;
+
         const isError = statusId >= 4;
         showOutput(output || '无输出', isError);
-        
+
     } catch (error) {
         updateStatus(10);
-        
+
         let errorMsg = error.message;
         if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError')) {
             errorMsg = '网络连接失败，请检查网络';
         } else if (errorMsg.includes('429')) {
             errorMsg = '请求过于频繁，Judge0 已限流';
+        } else if (errorMsg.includes('无可用') || errorMsg.includes('均不可用')) {
+            errorMsg = errorMsg + '（所有后端可能都在冷却中，请稍后重试）';
         }
-        
+
         showOutput(`错误: ${errorMsg}`, true);
         console.error('编译错误:', error);
     } finally {
@@ -294,7 +511,8 @@ async function runCode() {
     }
 }
 
-// 清空代码
+// ============ 其他功能 ============
+
 function clearCode() {
     editor.setValue('');
     outputEl.textContent = '点击"编译运行"查看结果...';
@@ -304,7 +522,6 @@ function clearCode() {
     localStorage.removeItem(STORAGE_KEY);
 }
 
-// 重置为默认模板
 function resetToTemplate() {
     editor.setValue(DEFAULT_CODE);
     outputEl.innerHTML = '<span class="placeholder">点击"编译运行"查看结果...</span>';
@@ -313,7 +530,6 @@ function resetToTemplate() {
     stdinInput.value = '';
 }
 
-// 下载代码为 .c 文件
 function downloadCode() {
     const code = editor.getValue();
     if (!code.trim()) return;
@@ -340,5 +556,7 @@ editor.setOption('extraKeys', {
     'Cmd-S': function() { downloadCode(); }
 });
 
-// 页面加载完成提示
-console.log('C语言在线编译器已加载');
+// ============ 启动：健康检查选择最优后端 ============
+selectBestBackend();
+
+console.log('C语言在线编译器已加载（多后端版 v2.0）');

@@ -218,6 +218,23 @@ header p {
     color: var(--warning-color);
 }
 
+/* 后端状态指示器 */
+.backend-status {
+    margin-top: 0.5rem;
+    font-size: 0.75rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+    display: inline-block;
+}
+.backend-status.healthy {
+    color: var(--success-color);
+    background: rgba(34, 197, 94, 0.15);
+}
+.backend-status.error {
+    color: var(--error-color);
+    background: rgba(239, 68, 68, 0.15);
+}
+
 /* 加载动画 */
 .spinner {
     display: inline-block;
