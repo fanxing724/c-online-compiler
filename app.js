@@ -68,6 +68,22 @@ const editor = CodeMirror.fromTextArea(document.getElementById('codeEditor'), {
     lineWrapping: true
 });
 
+const DEFAULT_CODE = `#include <stdio.h>
+
+int main() {
+    printf("Hello, World!\n");
+    return 0;
+}`;
+
+// localStorage 版本迁移：检测到旧版本时清除旧代码缓存
+const STORAGE_VERSION = 2;
+const savedVersion = localStorage.getItem(STORAGE_KEY + '_version');
+if (savedVersion !== String(STORAGE_VERSION)) {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.setItem(STORAGE_KEY + '_version', STORAGE_VERSION);
+    console.log('[Storage] 已清除旧代码缓存，请重新输入');
+}
+
 // 恢复上次编辑的代码，或加载默认模板
 const savedCode = localStorage.getItem(STORAGE_KEY);
 editor.setValue(savedCode || DEFAULT_CODE);
@@ -237,23 +253,24 @@ function updateBackendUI() {
 // ============ 工具函数 ============
 
 /**
- * 提交前清理代码：把中文弯引号和其他中文标点替换为英文
+ * 提交前清理代码：移除中文弯引号、全角标点等非法字符
+ * 用空字符串移除而非替换，避免在字符串内部产生多余的引号导致 C 语法错误
  */
 function sanitizeCode(code) {
     return code
-        .replace(/\u201c/g, '"')   // 左双弯引号 " → "
-        .replace(/\u201d/g, '"')   // 右双弯引号 " → "
-        .replace(/\u2018/g, "'")  // 左单弯引号 ' → '
-        .replace(/\u2019/g, "'")  // 右单弯引号 ' → '
-        .replace(/\uff02/g, '"')   // 全角双引号 " → "
-        .replace(/\u300c/g, '"')   // 左书名号「 → "
-        .replace(/\u300d/g, '"')   // 右书名号」 → "
-        .replace(/\u300e/g, "'")   // 左书名号『 → '
-        .replace(/\u300f/g, "'")   // 右书名号』 → '
-        .replace(/\u300a/g, '[')   // 左双书名号《 → [
-        .replace(/\u300b/g, ']')   // 右双书名号》 → ]
-        .replace(/\u2014/g, '--')  // em dash — → --
-        .replace(/\u2013/g, '-')   // en dash – → -
+        .replace(/\u201c/g, '')   // 左双弯引号 " → 移除
+        .replace(/\u201d/g, '')   // 右双弯引号 " → 移除
+        .replace(/\u2018/g, '')  // 左单弯引号 ' → 移除
+        .replace(/\u2019/g, '')  // 右单弯引号 ' → 移除
+        .replace(/\uff02/g, '"')   // 全角双引号 " → 英文引号
+        .replace(/\u300c/g, '"')   // 左书名号「 → 英文引号
+        .replace(/\u300d/g, '"')   // 右书名号」 → 英文引号
+        .replace(/\u300e/g, "'")   // 左书名号『 → 英文单引号
+        .replace(/\u300f/g, "'")   // 右书名号』 → 英文单引号
+        .replace(/\u300a/g, '[')   // 左书名号《 → 方括号
+        .replace(/\u300b/g, ']')   // 右书名号》 → 方括号
+        .replace(/\u2014/g, '--')  // em dash — → 双连字符
+        .replace(/\u2013/g, '-')   // en dash – → 连字符
         .replace(/\uff01/g, '!')   // 全角感叹号！ → !
         .replace(/\uff08/g, '(')   // 全角左括号（ → (
         .replace(/\uff09/g, ')')   // 全角右括号） → )
