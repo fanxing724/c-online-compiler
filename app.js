@@ -16,7 +16,7 @@ let isRunning = false;
 const DEFAULT_CODE = `#include <stdio.h>
 
 int main() {
-    printf(“Hello, World!\\n”);
+    printf("Hello, World!\\n");
     return 0;
 }`;
 
@@ -297,7 +297,7 @@ async function runCode() {
 // 清空代码
 function clearCode() {
     editor.setValue('');
-    outputEl.textContent = '点击”编译运行”查看结果...';
+    outputEl.textContent = '点击"编译运行"查看结果...';
     outputEl.style.color = 'var(--text-secondary)';
     hideStatus();
     stdinInput.value = '';
@@ -307,7 +307,7 @@ function clearCode() {
 // 重置为默认模板
 function resetToTemplate() {
     editor.setValue(DEFAULT_CODE);
-    outputEl.innerHTML = '<span class=”placeholder”>点击”编译运行”查看结果...</span>';
+    outputEl.innerHTML = '<span class="placeholder">点击"编译运行"查看结果...</span>';
     outputEl.style.color = '';
     hideStatus();
     stdinInput.value = '';
