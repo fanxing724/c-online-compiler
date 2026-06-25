@@ -236,6 +236,36 @@ function updateBackendUI() {
 
 // ============ 工具函数 ============
 
+/**
+ * 提交前清理代码：把中文弯引号和其他中文标点替换为英文
+ */
+function sanitizeCode(code) {
+    return code
+        .replace(/\u201c/g, '"')   // 左双弯引号 " → "
+        .replace(/\u201d/g, '"')   // 右双弯引号 " → "
+        .replace(/\u2018/g, "'")  // 左单弯引号 ' → '
+        .replace(/\u2019/g, "'")  // 右单弯引号 ' → '
+        .replace(/\uff02/g, '"')   // 全角双引号 " → "
+        .replace(/\u300c/g, '"')   // 左书名号「 → "
+        .replace(/\u300d/g, '"')   // 右书名号」 → "
+        .replace(/\u300e/g, "'")   // 左书名号『 → '
+        .replace(/\u300f/g, "'")   // 右书名号』 → '
+        .replace(/\u300a/g, '[')   // 左双书名号《 → [
+        .replace(/\u300b/g, ']')   // 右双书名号》 → ]
+        .replace(/\u2014/g, '--')  // em dash — → --
+        .replace(/\u2013/g, '-')   // en dash – → -
+        .replace(/\uff01/g, '!')   // 全角感叹号！ → !
+        .replace(/\uff08/g, '(')   // 全角左括号（ → (
+        .replace(/\uff09/g, ')')   // 全角右括号） → )
+        .replace(/\uff0c/g, ',')   // 全角逗号， → ,
+        .replace(/\u3002/g, '.')   // 句号。 → .
+        .replace(/\uff1a/g, ':')   // 全角冒号： → :
+        .replace(/\uff1b/g, ';')   // 全角分号； → ;
+        .replace(/\uff1f/g, '?')   // 全角问号？ → ?
+        .replace(/\uff5e/g, '~')   // 全角波浪号～ → ~
+        .replace(/\uffe5/g, '$');  // 全角人民币￥ → $
+}
+
 function toBase64Utf8(text) {
     const bytes = new TextEncoder().encode(text);
     let binary = '';
@@ -415,14 +445,21 @@ async function runCode() {
     }
 
     const sourceCode = editor.getValue();
+    const rawCode = sourceCode;   // 保留原始用于可能的提示
     const stdin = stdinInput.value;
 
-    if (sourceCode.length > MAX_CODE_LENGTH) {
+    // 提交前自动清理中文标点（弯引号、全角等）
+    const cleanCode = sanitizeCode(sourceCode);
+    if (cleanCode !== sourceCode) {
+        console.log('[Sanitize] 检测到中文标点，已自动替换');
+    }
+
+    if (cleanCode.length > MAX_CODE_LENGTH) {
         showOutput(`代码过长（超过 ${MAX_CODE_LENGTH/1024}KB 限制）`, true);
         return;
     }
 
-    if (!sourceCode.trim()) {
+    if (!cleanCode.trim()) {
         showOutput('请输入代码', true);
         return;
     }
@@ -444,7 +481,7 @@ async function runCode() {
     fallbackCount = 0;
 
     try {
-        const result = await submitCode(sourceCode, stdin);
+        const result = await submitCode(cleanCode, stdin);
 
         const stdout = result.stdout || '';
         const stderr = result.stderr || '';
@@ -531,7 +568,7 @@ function resetToTemplate() {
 }
 
 function downloadCode() {
-    const code = editor.getValue();
+    const code = sanitizeCode(editor.getValue());
     if (!code.trim()) return;
     const blob = new Blob([code], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
