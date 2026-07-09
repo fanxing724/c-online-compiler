@@ -159,6 +159,6 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`番星C语言编译器 backend listening on ${PORT}`);
+  console.log(`番星C语言编辑器 backend listening on ${PORT}`);
   console.log(`Configured backends: ${JUDGE0_URLS.join(', ')}`);
 });
