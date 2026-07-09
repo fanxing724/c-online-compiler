@@ -52,7 +52,7 @@ const BACKENDS = [
 const DEFAULT_CODE = `#include <stdio.h>
 
 int main() {
-    printf("Hello, World!\n");
+    puts("Hello, World!");
     return 0;
 }`;
 
