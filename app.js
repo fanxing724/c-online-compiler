@@ -696,4 +696,4 @@ editor.setOption('extraKeys', {
 // ============ 启动：健康检查选择最优后端 ============
 selectBestBackend();
 
-console.log('C语言在线编译器已加载（EdgeOne Makers 版 v3.0）');
+console.log('番星C语言编译器已加载（EdgeOne Makers 版 v3.0）');
