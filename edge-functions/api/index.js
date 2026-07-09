@@ -18,33 +18,43 @@ function decodeBase64Utf8(text) {
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
   'Access-Control-Max-Age': '86400',
   'Content-Type': 'application/json; charset=utf-8',
 };
 
-export default async function onRequest(context) {
-  const { request } = context;
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), { status, headers: CORS_HEADERS });
+}
 
-  if (request.method === 'OPTIONS') {
+export default async function onRequest(context) {
+  const req = context instanceof Request ? context : context.request;
+
+  if (!req) {
+    return json({ error: 'No request found in context', keys: Object.keys(context || {}) }, 500);
+  }
+
+  if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
 
-  if (request.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-      status: 405,
-      headers: CORS_HEADERS,
-    });
+  if (req.method === 'GET') {
+    return json({ ok: true, service: 'c-compiler-api', timestamp: Date.now() });
+  }
+
+  if (req.method !== 'POST') {
+    return json({ error: 'Method not allowed' }, 405);
   }
 
   try {
-    const body = await request.json();
+    const bodyText = await req.text();
+    const body = JSON.parse(bodyText);
     const sourceCode = body.source_code || '';
     const stdin = body.stdin || '';
     const languageId = Number(body.language_id) || 50;
 
-    const response = await fetch(`${JUDGE0_URL}/submissions?base64_encoded=true&wait=true`, {
+    const judge0Response = await fetch(`${JUDGE0_URL}/submissions?base64_encoded=true&wait=true`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -56,7 +66,7 @@ export default async function onRequest(context) {
       }),
     });
 
-    const result = await response.json();
+    const result = await judge0Response.json();
 
     const output = {
       stdout: result.stdout ? decodeBase64Utf8(result.stdout) : '',
@@ -68,14 +78,8 @@ export default async function onRequest(context) {
       memory: result.memory ?? null,
     };
 
-    return new Response(JSON.stringify(output), {
-      status: response.ok ? 200 : response.status,
-      headers: CORS_HEADERS,
-    });
+    return json(output, judge0Response.ok ? 200 : judge0Response.status);
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: CORS_HEADERS,
-    });
+    return json({ error: error.message, stack: error.stack }, 500);
   }
 }
