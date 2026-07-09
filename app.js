@@ -108,10 +108,48 @@ const statusBadge = document.getElementById('statusBadge');
 const stdinInput = document.getElementById('stdinInput');
 const appVersion = document.getElementById('appVersion');
 const backendStatusEl = document.getElementById('backendStatus');
+const deployStatusEl = document.getElementById('deployStatus');
 
 if (appVersion) {
     appVersion.textContent = APP_CONFIG.version || 'dev';
 }
+
+// ============ 部署状态检测 ============
+
+async function checkDeployment() {
+    if (!deployStatusEl) return;
+
+    const checks = [];
+    checks.push(`JS: ${APP_CONFIG.version || 'dev'}`);
+    checks.push(`edgeApiUrl: ${EDGE_API_URL || '未配置'}`);
+
+    if (EDGE_API_URL) {
+        try {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 5000);
+            const res = await fetch(EDGE_API_URL, { signal: controller.signal });
+            clearTimeout(timer);
+            const data = await res.json();
+            if (data.ok) {
+                checks.push('/api: 正常');
+                deployStatusEl.className = 'backend-status healthy';
+            } else {
+                checks.push(`/api: 异常 (${res.status})`);
+                deployStatusEl.className = 'backend-status error';
+            }
+        } catch (e) {
+            checks.push(`/api: 失败 (${e.message})`);
+            deployStatusEl.className = 'backend-status error';
+        }
+    } else {
+        checks.push('/api: 旧版JS，需强刷');
+        deployStatusEl.className = 'backend-status error';
+    }
+
+    deployStatusEl.textContent = checks.join(' | ');
+}
+
+checkDeployment();
 
 // ============ 多后端管理器 ============
 
