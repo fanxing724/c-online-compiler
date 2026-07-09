@@ -4,6 +4,7 @@
 const APP_CONFIG = window.__APP_CONFIG__ || {};
 const JUDGE0_PROXY_URL = APP_CONFIG.judge0ProxyUrl || '';
 const BACKEND_RUN_URL = APP_CONFIG.backendRunUrl || '';
+const EDGE_API_URL = APP_CONFIG.edgeApiUrl || '';
 const USE_PROXY = APP_CONFIG.useProxy !== false && Boolean(JUDGE0_PROXY_URL);
 const C_LANGUAGE_ID = 50; // C (GCC 12.2.0)
 const COOLDOWN_MS = 5000; // 5秒请求冷却
@@ -364,6 +365,25 @@ function setRunningState(running) {
 
 // ============ 提交代码（多后端自动切换）============
 
+async function submitToEdgeApi(sourceCode, stdin = '') {
+    const response = await fetch(EDGE_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            source_code: sourceCode,
+            stdin,
+            language_id: C_LANGUAGE_ID
+        })
+    });
+
+    if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Edge API 错误 (${response.status}): ${errText.substring(0, 200)}`);
+    }
+
+    return await response.json();
+}
+
 async function submitToBackend(backend, sourceCode, stdin = '') {
     const url = buildJudge0Url(backend);
     const payload = {
@@ -375,11 +395,15 @@ async function submitToBackend(backend, sourceCode, stdin = '') {
     };
 
     const start = performance.now();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30000);
     const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        signal: controller.signal
     });
+    clearTimeout(timer);
     const latency = Math.round(performance.now() - start);
 
     if (!response.ok) {
@@ -392,6 +416,16 @@ async function submitToBackend(backend, sourceCode, stdin = '') {
 }
 
 async function submitCode(sourceCode, stdin = '') {
+    // 优先使用 EdgeOne Makers Edge Function API
+    if (EDGE_API_URL) {
+        try {
+            console.log('[Submit] 使用 EdgeOne API:', EDGE_API_URL);
+            return await submitToEdgeApi(sourceCode, stdin);
+        } catch (e) {
+            console.warn('[Submit] EdgeOne API 失败，尝试备用:', e.message);
+        }
+    }
+
     const backendUrl = buildBackendRunUrl();
 
     // 有后端服务时直接使用
@@ -461,7 +495,6 @@ async function runCode() {
     }
 
     const sourceCode = editor.getValue();
-    const rawCode = sourceCode;   // 保留原始用于可能的提示
     const stdin = stdinInput.value;
 
     // 提交前自动清理中文标点（弯引号、全角等）
@@ -612,4 +645,4 @@ editor.setOption('extraKeys', {
 // ============ 启动：健康检查选择最优后端 ============
 selectBestBackend();
 
-console.log('C语言在线编译器已加载（多后端版 v2.0）');
+console.log('C语言在线编译器已加载（EdgeOne Makers 版 v3.0）');

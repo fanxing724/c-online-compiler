@@ -150,7 +150,9 @@ const server = http.createServer(async (req, res) => {
     ? 'text/html; charset=utf-8'
     : fileName.endsWith('.css')
       ? 'text/css; charset=utf-8'
-      : 'application/javascript; charset=utf-8';
+      : fileName.endsWith('.md')
+        ? 'text/plain; charset=utf-8'
+        : 'application/javascript; charset=utf-8';
 
   res.writeHead(200, { 'Content-Type': contentType });
   res.end(fs.readFileSync(filePath));

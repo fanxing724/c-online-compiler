@@ -1,8 +1,6 @@
 // Cloudflare Worker - Judge0 CORS 代理
 // 部署到 https://workers.cloudflare.com
 
-const JUDGE0_BASE = 'https://ce.judge0.com';
-
 export default {
   async fetch(request) {
     if (request.method === 'OPTIONS') {

@@ -1,23 +1,32 @@
-// EdgeOne Pages Functions - Judge0 CORS 代理
-// 部署到 EdgeOne Pages，自动映射为 /proxy
+// EdgeOne Makers Edge Function - Judge0 CORS 代理（备用）
+// 主路径使用 /api（edge-functions/api/index.js），此文件为兼容回退
 
-export default {
-  async fetch(request, env) {
-    if (request.method === 'OPTIONS') {
-      return new Response(null, {
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type',
-          'Access-Control-Max-Age': '86400',
-        }
-      });
-    }
+const ALLOWED_DOMAINS = ['ce.judge0.com'];
 
-    if (request.method !== 'GET' && request.method !== 'POST') {
-      return new Response('Method not allowed', { status: 405 });
-    }
+function isAllowedDomain(hostname) {
+  return ALLOWED_DOMAINS.includes(hostname) || hostname.endsWith('.judge0.com');
+}
 
+export default async function onRequest(context) {
+  const { request } = context;
+
+  if (request.method === 'OPTIONS') {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Max-Age': '86400',
+      },
+    });
+  }
+
+  if (request.method !== 'GET' && request.method !== 'POST') {
+    return new Response('Method not allowed', { status: 405 });
+  }
+
+  try {
     const url = new URL(request.url);
     const targetUrl = url.searchParams.get('url');
 
@@ -32,15 +41,13 @@ export default {
       return new Response('Invalid URL', { status: 400 });
     }
 
-    if (target.hostname !== 'ce.judge0.com' && !target.hostname.endsWith('.judge0.com')) {
+    if (!isAllowedDomain(target.hostname)) {
       return new Response('Forbidden domain', { status: 403 });
     }
 
     const response = await fetch(target.toString(), {
       method: request.method,
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: request.method === 'POST' ? await request.text() : undefined,
     });
 
@@ -51,7 +58,12 @@ export default {
 
     return new Response(await response.text(), {
       status: response.status,
-      headers
+      headers,
+    });
+  } catch (error) {
+    return new Response(`Proxy Error: ${error.message}`, {
+      status: 500,
+      headers: { 'Access-Control-Allow-Origin': '*' },
     });
   }
-};
+}
