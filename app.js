@@ -454,14 +454,18 @@ async function submitToBackend(backend, sourceCode, stdin = '') {
 }
 
 let edgeApiError = '';
+let edgeApiUsed = false;
 
 async function submitCode(sourceCode, stdin = '') {
     edgeApiError = '';
+    edgeApiUsed = false;
     // 优先使用 EdgeOne Makers Edge Function API
     if (EDGE_API_URL) {
         try {
             console.log('[Submit] 使用 EdgeOne API:', EDGE_API_URL);
-            return await submitToEdgeApi(sourceCode, stdin);
+            const result = await submitToEdgeApi(sourceCode, stdin);
+            edgeApiUsed = true;
+            return result;
         } catch (e) {
             edgeApiError = e.message;
             console.warn('[Submit] EdgeOne API 失败，尝试备用:', e.message);
@@ -609,7 +613,9 @@ async function runCode() {
 
         const elapsedMs = Math.round(performance.now() - startTime);
         let meta = `\n[耗时] ${elapsedMs}ms`;
-        if (activeBackend) {
+        if (edgeApiUsed) {
+            meta += ' | 后端: EdgeOne /api';
+        } else if (activeBackend) {
             meta += ` | 后端: ${activeBackend.name}`;
         }
         if (edgeApiError) {
