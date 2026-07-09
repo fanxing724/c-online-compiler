@@ -71,7 +71,7 @@ const editor = CodeMirror.fromTextArea(document.getElementById('codeEditor'), {
 
 // localStorage 版本迁移 + 强制加载默认模板
 // 旧缓存里可能有弯引号，直接清掉，用默认模板
-const STORAGE_VERSION = 2;
+const STORAGE_VERSION = 3;
 const savedVersion = localStorage.getItem(STORAGE_KEY + '_version');
 if (savedVersion !== String(STORAGE_VERSION)) {
     localStorage.removeItem(STORAGE_KEY);
