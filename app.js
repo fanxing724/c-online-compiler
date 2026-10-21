@@ -1,395 +1,211 @@
-// 番星 C 语言编辑器 - 前端主逻辑
-const APP_CONFIG = window.__APP_CONFIG__ || {};
-const EDGE_API_URL = APP_CONFIG.edgeApiUrl || '';
-const JUDGE0_PROXY_URL = APP_CONFIG.judge0ProxyUrl || '';
-const BACKEND_RUN_URL = APP_CONFIG.backendRunUrl || '';
-const USE_PROXY = APP_CONFIG.useProxy !== false && Boolean(JUDGE0_PROXY_URL);
+// C online compiler, maintained by fanxing724. Licensed under AFL-3.0.
+const STORAGE_KEY = 'fanxing_c_compiler_v1';
+const encoder = new TextEncoder();
+const EXAMPLES = {
+    hello: { code: `#include <stdio.h>
 
-const C_LANGUAGE_ID = 50;
-const COOLDOWN_MS = 3000;
-const MAX_CODE_LENGTH = 32768;
-const REQUEST_TIMEOUT_MS = 20000;
-const STORAGE_KEY = 'fanxing_c_compiler_code';
-const STORAGE_VERSION = 3;
-
-// 默认 C 代码模板
-const DEFAULT_CODE = `#include <stdio.h>
-int main() {
+int main(void) {
     puts("Hello, World!");
+    puts("你好，C！");
     return 0;
-}`;
+}`, stdin: '' },
+    sum: { code: `#include <stdio.h>
 
-// ============ CodeMirror 初始化 ============
-const editor = CodeMirror.fromTextArea(document.getElementById('codeEditor'), {
-    mode: 'text/x-csrc',
-    theme: 'dracula',
-    lineNumbers: true,
-    autoCloseBrackets: true,
-    matchBrackets: true,
-    indentUnit: 4,
-    tabSize: 4,
-    indentWithTabs: false,
-    lineWrapping: true,
-});
-
-// localStorage 版本迁移 + 非法字符检测
-const savedVersion = localStorage.getItem(STORAGE_KEY + '_version');
-if (savedVersion !== String(STORAGE_VERSION)) {
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.setItem(STORAGE_KEY + '_version', STORAGE_VERSION);
-}
-const savedCode = localStorage.getItem(STORAGE_KEY);
-const hasBadChars = savedCode && /[\u201c\u201d\u2018\u2019]/.test(savedCode);
-if (hasBadChars) {
-    localStorage.removeItem(STORAGE_KEY);
-}
-editor.setValue(savedCode && savedCode.trim() && !hasBadChars ? savedCode : DEFAULT_CODE);
-
-// 自动保存（1秒防抖）
-let saveTimer = null;
-editor.on('change', () => {
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => {
-        localStorage.setItem(STORAGE_KEY, editor.getValue());
-    }, 1000);
-});
-
-// ============ DOM 元素 ============
-const runBtn = document.getElementById('runBtn');
-const runBtnLabel = document.getElementById('runBtnLabel');
-const clearBtn = document.getElementById('clearBtn');
-const downloadBtn = document.getElementById('downloadBtn');
-const resetBtn = document.getElementById('resetBtn');
-const outputEl = document.getElementById('output');
-const statusBadge = document.getElementById('statusBadge');
-const stdinInput = document.getElementById('stdinInput');
-const appVersion = document.getElementById('appVersion');
-const deployStatusEl = document.getElementById('deployStatus');
-
-if (appVersion) {
-    appVersion.textContent = APP_CONFIG.version || 'dev';
-}
-
-// ============ 部署状态检测 ============
-async function checkDeployment() {
-    if (!deployStatusEl) return;
-    const checks = [`JS: ${APP_CONFIG.version || 'dev'}`];
-    if (EDGE_API_URL) {
-        try {
-            const res = await fetchWithTimeout(EDGE_API_URL, { method: 'GET' }, 5000);
-            const data = await res.json();
-            checks.push(data.ok ? '/api: 正常' : `/api: 异常 (${res.status})`);
-            deployStatusEl.className = 'backend-status ' + (data.ok ? 'healthy' : 'error');
-        } catch (e) {
-            checks.push(`/api: 失败 (${e.name === 'AbortError' ? '超时' : e.message})`);
-            deployStatusEl.className = 'backend-status error';
-        }
-    } else {
-        checks.push('/api: 未配置');
-        deployStatusEl.className = 'backend-status error';
+int main(void) {
+    long long a, b;
+    if (scanf("%lld %lld", &a, &b) == 2) {
+        printf("%lld\\n", a + b);
     }
-    deployStatusEl.textContent = checks.join(' | ');
-}
-checkDeployment();
+    return 0;
+}`, stdin: '12 30' },
+    sort: { code: `#include <stdio.h>
+#include <stdlib.h>
 
-// ============ 工具函数 ============
-function fetchWithTimeout(url, options, timeoutMs) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+int compare(const void *a, const void *b) {
+    int x = *(const int *)a, y = *(const int *)b;
+    return (x > y) - (x < y);
 }
 
-function toBase64Utf8(text) {
-    const bytes = new TextEncoder().encode(text);
-    let binary = '';
-    for (let i = 0; i < bytes.length; i += 0x8000) {
-        binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+int main(void) {
+    int n, numbers[100];
+    if (scanf("%d", &n) != 1 || n < 0 || n > 100) return 1;
+    for (int i = 0; i < n; i++) {
+        if (scanf("%d", &numbers[i]) != 1) return 1;
     }
-    return btoa(binary);
-}
-
-function fromBase64Utf8(text) {
-    return new TextDecoder().decode(Uint8Array.from(atob(text), (c) => c.charCodeAt(0)));
-}
-
-/**
- * 提交前清理代码：中文标点替换为英文对应字符
- * 弯引号替换为直引号（而非删除），避免破坏代码语义
- */
-function sanitizeCode(code) {
-    return code
-        .replace(/[\u201c\u201d\uff02\u300c\u300d]/g, '"')
-        .replace(/[\u2018\u2019\u300e\u300f]/g, "'")
-        .replace(/\u300a/g, '[')
-        .replace(/\u300b/g, ']')
-        .replace(/\u2014/g, '--')
-        .replace(/\u2013/g, '-')
-        .replace(/\uff01/g, '!')
-        .replace(/\uff08/g, '(')
-        .replace(/\uff09/g, ')')
-        .replace(/\uff0c/g, ',')
-        .replace(/\u3002/g, '.')
-        .replace(/\uff1a/g, ':')
-        .replace(/\uff1b/g, ';')
-        .replace(/\uff1f/g, '?')
-        .replace(/\uff5e/g, '~')
-        .replace(/\uffe5/g, '$');
-}
-
-// 状态映射
-const STATUS_MAP = {
-    1: { text: '等待中', class: 'running' },
-    2: { text: '处理中', class: 'running' },
-    3: { text: '运行成功', class: 'success' },
-    4: { text: '错误答案', class: 'error' },
-    5: { text: '超时', class: 'error' },
-    6: { text: '编译错误', class: 'error' },
-    7: { text: '运行时错误', class: 'error' },
-    8: { text: '系统错误', class: 'error' },
-    9: { text: '已终止', class: 'success' },
-    10: { text: '内部错误', class: 'error' },
-    11: { text: '无效输入', class: 'error' },
-    12: { text: '权限不足', class: 'error' },
-    13: { text: '内存不足', class: 'error' },
-    14: { text: '输出超限', class: 'error' },
+    qsort(numbers, n, sizeof(int), compare);
+    for (int i = 0; i < n; i++) {
+        if (i > 0) putchar(' ');
+        printf("%d", numbers[i]);
+    }
+    putchar('\\n');
+    return 0;
+}`, stdin: '5\n9 1 7 3 5' },
 };
-
-function updateStatus(status) {
-    statusBadge.classList.remove('hidden', 'success', 'error', 'running');
-    const info = STATUS_MAP[status] || { text: '未知', class: 'error' };
-    statusBadge.textContent = info.text;
-    statusBadge.classList.add(info.class);
-}
-
-function hideStatus() {
-    statusBadge.classList.add('hidden');
-}
-
-function showOutput(text, isError = false) {
-    outputEl.textContent = text;
-    outputEl.style.color = isError ? 'var(--error-color)' : 'var(--text-primary)';
-}
-
-function showLoading() {
-    outputEl.textContent = '正在编译运行...';
-    outputEl.style.color = 'var(--text-secondary)';
-}
-
-function setRunningState(running) {
-    runBtn.disabled = running;
-    runBtnLabel.textContent = running ? '编译中...' : '编译运行';
-}
-
-// ============ 提交代码 ============
-async function submitToEdgeApi(sourceCode, stdin) {
-    const response = await fetchWithTimeout(
-        EDGE_API_URL,
-        {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ source_code: sourceCode, stdin, language_id: C_LANGUAGE_ID }),
-        },
-        REQUEST_TIMEOUT_MS
-    );
-    if (!response.ok) {
-        const errText = await response.text().catch(() => '');
-        throw new Error(`Edge API 错误 (${response.status}): ${errText.substring(0, 200)}`);
+const $ = id => document.getElementById(id);
+const codeArea = $('codeEditor');
+// Keep editing usable if the third-party CodeMirror CDN is unavailable.
+const editor = window.CodeMirror ? CodeMirror.fromTextArea(codeArea, {
+    mode: 'text/x-csrc', theme: 'dracula', lineNumbers: true,
+    autoCloseBrackets: true, matchBrackets: true, indentUnit: 4,
+    tabSize: 4, indentWithTabs: false, lineWrapping: true,
+}) : {
+    getValue: () => codeArea.value,
+    setValue: value => { codeArea.value = value; },
+    on: (_, listener) => codeArea.addEventListener('input', listener),
+    setOption: () => {},
+};
+let saved;
+try {
+    saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (!saved) {
+        const legacy = localStorage.getItem('fanxing_c_compiler_code');
+        if (legacy !== null) saved = { code: legacy, stdin: '', language: 50 };
     }
-    return response.json();
-}
-
-async function submitToBackendRun(sourceCode, stdin) {
-    const url = `${BACKEND_RUN_URL.replace(/\/$/, '')}/api/run`;
-    const response = await fetchWithTimeout(
-        url,
-        {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ source_code: sourceCode, stdin, language_id: C_LANGUAGE_ID }),
-        },
-        REQUEST_TIMEOUT_MS
-    );
-    if (!response.ok) {
-        const errText = await response.text().catch(() => '');
-        throw new Error(`后端错误 (${response.status}): ${errText.substring(0, 200)}`);
+} catch { /* Storage can be disabled. */ }
+editor.setValue(typeof saved?.code === 'string' ? saved.code : EXAMPLES.hello.code);
+$('stdinInput').value = typeof saved?.stdin === 'string' ? saved.stdin : '';
+$('languageSelect').value = [50].includes(saved?.language) ? saved.language : 50;
+let storageFailed = false;
+function save() {
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+            code: editor.getValue(), stdin: $('stdinInput').value,
+            language: Number($('languageSelect').value),
+        }));
+    } catch {
+        storageFailed = true;
+        $('saveStatus').textContent = '浏览器禁止存储，刷新前请下载代码';
     }
-    return response.json();
+    if (!storageFailed) $('saveStatus').textContent = '已保存到当前浏览器';
 }
+editor.on('change', save);
+$('stdinInput').addEventListener('input', save);
+$('languageSelect').addEventListener('change', save);
+window.addEventListener('pagehide', save);
 
-async function submitToJudge0Direct(sourceCode, stdin) {
-    const judge0Url = 'https://ce.judge0.com/submissions?base64_encoded=true&wait=true';
-    const targetUrl = USE_PROXY ? `${JUDGE0_PROXY_URL}?url=${encodeURIComponent(judge0Url)}` : judge0Url;
-    const response = await fetchWithTimeout(
-        targetUrl,
-        {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                language_id: C_LANGUAGE_ID,
-                source_code: toBase64Utf8(sourceCode),
-                stdin: stdin ? toBase64Utf8(stdin) : '',
-                cpu_time_limit: 5,
-                memory_limit: 128000,
-            }),
-        },
-        REQUEST_TIMEOUT_MS
-    );
-    if (!response.ok) {
-        throw new Error(`Judge0 错误 (HTTP ${response.status})`);
+const STATUS = {
+    1: '等待中', 2: '处理中', 3: '运行成功', 4: '答案不匹配',
+    5: '运行超时', 6: '编译错误', 7: '运行错误（SIGSEGV）',
+    8: '输出文件超限（SIGXFSZ）', 9: '运行错误（SIGFPE）',
+    10: '运行错误（SIGABRT）', 11: '运行错误（非零退出）',
+    12: '运行错误', 13: '编译服务内部错误', 14: '可执行文件格式错误',
+};
+function status(id) {
+    $('statusBadge').className = `status-badge ${id === 1 || id === 2 ? 'running' : id === 3 ? 'success' : 'error'}`;
+    $('statusBadge').textContent = STATUS[id] || '请求失败';
+}
+function output(text, error = false) {
+    $('output').textContent = text;
+    $('output').style.color = error ? 'var(--error-color)' : 'var(--text-primary)';
+}
+async function api(options, timeout = 30000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
+    try {
+        const response = await fetch('/api', { ...options, signal: controller.signal });
+        let data;
+        try { data = await response.json(); }
+        catch { throw new Error('编译接口未就绪，请使用 npm start 或部署到 EdgeOne Pages'); }
+        if (!response.ok) throw new Error(data.error || `编译请求失败（HTTP ${response.status}）`);
+        return data;
+    } finally { clearTimeout(timer); }
+}
+async function checkService() {
+    try {
+        const data = await api({ method: 'GET' }, 5000);
+        if (!data.ok || data.service !== 'c-compiler-api') throw new Error('编译接口不匹配');
+        $('deployStatus').className = 'backend-status healthy';
+        $('deployStatus').textContent = '编译接口已连接 · 实际运行取决于上游编译服务';
+    } catch (error) {
+        $('deployStatus').className = 'backend-status error';
+        $('deployStatus').textContent = error.name === 'AbortError' ? '编译接口连接超时' : error.message;
     }
-    const result = await response.json();
-    return {
-        ...result,
-        stdout: result.stdout ? fromBase64Utf8(result.stdout) : '',
-        stderr: result.stderr ? fromBase64Utf8(result.stderr) : '',
-        compile_output: result.compile_output ? fromBase64Utf8(result.compile_output) : '',
-        message: result.message || '',
-    };
 }
-
-let lastSubmitTime = 0;
+checkService();
 let isRunning = false;
-
+let lastSubmit = 0;
 async function runCode() {
     if (isRunning) return;
-
-    const sourceCode = editor.getValue();
-    const stdin = stdinInput.value;
-    const cleanCode = sanitizeCode(sourceCode);
-
-    if (cleanCode !== sourceCode) {
-        console.log('[Sanitize] 检测到中文标点，已自动替换');
-    }
-    if (cleanCode.length > MAX_CODE_LENGTH) {
-        showOutput(`代码过长（超过 ${MAX_CODE_LENGTH / 1024}KB 限制）`, true);
-        return;
-    }
-    if (!cleanCode.trim()) {
-        showOutput('请输入代码', true);
-        return;
-    }
-
-    // 冷却控制
-    const now = Date.now();
-    const elapsed = now - lastSubmitTime;
-    if (elapsed < COOLDOWN_MS && lastSubmitTime > 0) {
-        const wait = Math.ceil((COOLDOWN_MS - elapsed) / 1000);
-        showOutput(`请求太频繁，请等待 ${wait} 秒后重试`, true);
-        return;
-    }
-
-    setRunningState(true);
-    lastSubmitTime = now;
-    showLoading();
-    hideStatus();
-
-    const startTime = performance.now();
-    let backendInfo = '';
-
+    const code = editor.getValue();
+    const stdin = $('stdinInput').value;
+    if (!code.trim()) return output('请输入 C 源代码', true);
+    if (encoder.encode(code).length > 32768) return output('代码不能超过 32KB（UTF-8）', true);
+    if (encoder.encode(stdin).length > 16384) return output('标准输入不能超过 16KB（UTF-8）', true);
+    if (Date.now() - lastSubmit < 3000) return output('请等待 3 秒再提交', true);
+    isRunning = true;
+    lastSubmit = Date.now();
+    $('runBtn').disabled = true;
+    $('runBtnLabel').textContent = '编译中...';
+    status(2);
+    output('正在编译运行...');
+    save();
+    const started = performance.now();
     try {
-        let result;
-        // 优先级：Edge API > 自建后端 > 直接 Judge0
-        if (EDGE_API_URL) {
-            try {
-                result = await submitToEdgeApi(cleanCode, stdin);
-                backendInfo = 'EdgeOne /api';
-            } catch (e) {
-                console.warn('[Submit] Edge API 失败，尝试备用:', e.message);
-                backendInfo = `/api 失败: ${e.message}`;
-            }
+        const result = await api({ method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ source_code: code, stdin, language_id: Number($('languageSelect').value) }),
+        });
+        if (!Number.isInteger(result.status?.id) || result.status.id < 3 || result.status.id > 14) {
+            throw new Error('编译服务返回了无效结果');
         }
-        if (!result && BACKEND_RUN_URL) {
-            try {
-                result = await submitToBackendRun(cleanCode, stdin);
-                backendInfo = '自建后端';
-            } catch (e) {
-                console.warn('[Submit] 后端失败，尝试直连:', e.message);
-                backendInfo += ` | 后端失败: ${e.message}`;
-            }
-        }
-        if (!result) {
-            result = await submitToJudge0Direct(cleanCode, stdin);
-            backendInfo = backendInfo ? backendInfo + ' | 直连 Judge0' : '直连 Judge0';
-        }
-
-        const stdout = result.stdout || '';
-        const stderr = result.stderr || '';
-        const compileOutput = result.compile_output || '';
-        const message = result.message || '';
-        const statusId = result.status && typeof result.status.id === 'number' ? result.status.id : 10;
-
-        updateStatus(statusId);
-
-        let output = '';
-        if (compileOutput) output += `[编译输出]\n${compileOutput}\n\n`;
-        if (stdout) output += `[输出]\n${stdout}`;
-        if (stderr) output += `[错误]\n${stderr}`;
-        if (message) output += `[信息]\n${message}\n`;
-        if (!output && statusId === 3) output = '程序运行成功，无输出';
-
-        const elapsedMs = Math.round(performance.now() - startTime);
-        output += `\n[耗时] ${elapsedMs}ms | 后端: ${backendInfo}`;
-
-        showOutput(output || '无输出', statusId >= 4);
+        status(result.status.id);
+        const parts = [];
+        if (result.compile_output) parts.push(`[编译输出]\n${result.compile_output}`);
+        if (result.stdout) parts.push(`[输出]\n${result.stdout}`);
+        if (result.stderr) parts.push(`[错误]\n${result.stderr}`);
+        if (result.message) parts.push(`[信息]\n${result.message}`);
+        if (!parts.length) parts.push(result.status.id === 3 ? '程序运行成功，无输出' : STATUS[result.status.id]);
+        const stats = [`请求耗时 ${Math.round(performance.now() - started)}ms`];
+        if (result.time !== null && result.time !== undefined) stats.push(`运行 ${result.time}s`);
+        if (result.memory !== null && result.memory !== undefined) stats.push(`内存 ${result.memory}KB`);
+        parts.push(stats.join(' · '));
+        output(parts.join('\n\n'), result.status.id !== 3);
     } catch (error) {
-        updateStatus(10);
-        let errorMsg = error.message;
-        if (error.name === 'AbortError') {
-            errorMsg = '请求超时，请稍后重试';
-        } else if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError')) {
-            errorMsg = '网络连接失败，请检查网络';
-        } else if (errorMsg.includes('429')) {
-            errorMsg = '请求过于频繁，Judge0 已限流';
-        }
-        showOutput(`错误: ${errorMsg}`, true);
-        console.error('编译错误:', error);
+        status(0);
+        output(error.name === 'AbortError' ? '请求超时，请稍后重试' : error.message, true);
     } finally {
-        setRunningState(false);
+        isRunning = false;
+        $('runBtn').disabled = false;
+        $('runBtnLabel').textContent = '编译运行';
     }
 }
-
-// ============ 其他功能 ============
-function clearCode() {
-    editor.setValue('');
-    outputEl.textContent = '点击"编译运行"查看结果...';
-    outputEl.style.color = 'var(--text-secondary)';
-    hideStatus();
-    stdinInput.value = '';
-    localStorage.removeItem(STORAGE_KEY);
+function resetOutput() {
+    output('点击“编译运行”查看结果...');
+    $('statusBadge').className = 'status-badge hidden';
 }
-
-function resetToTemplate() {
-    editor.setValue(DEFAULT_CODE);
-    outputEl.innerHTML = '<span class="placeholder">点击"编译运行"查看结果...</span>';
-    outputEl.style.color = '';
-    hideStatus();
-    stdinInput.value = '';
+function replaceCode(code, stdin) {
+    editor.setValue(code);
+    $('stdinInput').value = stdin;
+    resetOutput();
+    save();
 }
-
+$('exampleSelect').addEventListener('change', event => {
+    const example = EXAMPLES[event.target.value];
+    if (example && (editor.getValue() === EXAMPLES.hello.code || confirm('载入示例将替换当前代码和输入，是否继续？'))) {
+        replaceCode(example.code, example.stdin);
+    }
+    event.target.value = '';
+});
 function downloadCode() {
-    const code = sanitizeCode(editor.getValue());
-    if (!code.trim()) return;
-    const blob = new Blob([code], { type: 'text/plain' });
+    const blob = new Blob([editor.getValue()], { type: 'text/x-csrc;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = 'main.c';
     a.click();
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-
-// 事件监听
-runBtn.addEventListener('click', runCode);
-clearBtn.addEventListener('click', clearCode);
-downloadBtn?.addEventListener('click', downloadCode);
-resetBtn?.addEventListener('click', resetToTemplate);
-
-// 键盘快捷键
+$('runBtn').addEventListener('click', runCode);
+$('downloadBtn').addEventListener('click', downloadCode);
+$('clearBtn').addEventListener('click', () => { if (confirm('清空当前代码和标准输入？')) replaceCode('', ''); });
+$('resetBtn').addEventListener('click', () => { if (confirm('恢复 Hello World 模板？当前代码和输入将被替换。')) replaceCode(EXAMPLES.hello.code, ''); });
 editor.setOption('extraKeys', {
-    'Ctrl-Enter': runCode,
-    'Cmd-Enter': runCode,
-    'Ctrl-S': () => downloadCode(),
-    'Cmd-S': () => downloadCode(),
+    'Ctrl-Enter': runCode, 'Cmd-Enter': runCode,
+    'Ctrl-S': downloadCode, 'Cmd-S': downloadCode,
+    'Tab': cm => cm.replaceSelection('    '),
 });
-
-console.log('番星C语言编辑器已加载');
+if (!window.CodeMirror) codeArea.addEventListener('keydown', event => {
+    if (event.ctrlKey || event.metaKey) {
+        if (event.key === 'Enter') { event.preventDefault(); runCode(); }
+        if (event.key.toLowerCase() === 's') { event.preventDefault(); downloadCode(); }
+    }
+});

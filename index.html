@@ -13,13 +13,17 @@
 
     <header>
         <h1>番星C语言编辑器</h1>
-        <p>编写、编译、运行你的C代码（仅限教学使用）</p>
+        <p>编写、编译、运行你的 C 代码（仅限教学使用）</p>
+        <nav class="project-links" aria-label="GitHub 链接">
+            <a class="btn btn-secondary" href="https://github.com/fanxing724" target="_blank" rel="noopener noreferrer">我的 GitHub ↗</a>
+            <a class="btn btn-secondary" href="https://github.com/fanxing724/c-online-compiler" target="_blank" rel="noopener noreferrer">项目源码 ↗</a>
+        </nav>
     </header>
 
     <main class="container">
         <div class="editor-section">
             <div class="editor-header">
-                <span>源代码编辑器</span>
+                <span>源代码 · main.c</span>
                 <div class="actions">
                     <button id="runBtn" class="btn btn-primary">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -32,7 +36,14 @@
                     <button id="clearBtn" class="btn btn-secondary">清空</button>
                 </div>
             </div>
-            <textarea id="codeEditor"></textarea>
+            <div class="editor-options">
+                <label>编译器 <select id="languageSelect"><option value="50">C · GCC 9.2.0</option></select></label>
+                <label>示例 <select id="exampleSelect"><option value="">载入示例...</option value="hello">Hello World / 中文输出</option><option value="sum">两数求和</option><option value="sort">数组排序</option></select></label>
+            </div>
+            <p class="editor-note">使用标准 C 语言与 main 函数。Ctrl / ⌘ + Enter 运行，Ctrl / ⌘ + S 下载。</p>
+            <label class="sr-only" for="codeEditor">C 源代码</label>
+            <textarea id="codeEditor" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+            <p id="saveStatus" class="editor-note" role="status">代码和输入自动保存在当前浏览器</p>
         </div>
 
         <div class="output-section">
@@ -40,12 +51,12 @@
                 <span>输出结果</span>
                 <span id="statusBadge" class="status-badge hidden"></span>
             </div>
-            <pre id="output" class="output-content"><span class="placeholder">点击"编译运行"查看结果...</span></pre>
+            <pre aria-live="polite" id="output" class="output-content"><span class="placeholder">点击"编译运行"查看结果...</span></pre>
         </div>
 
         <div class="stdin-section">
             <div class="stdin-header">
-                <span>标准输入 (stdin)</span>
+                <label for="stdinInput">标准输入 (stdin)</label>
             </div>
             <textarea id="stdinInput" placeholder="输入程序需要的标准输入..."></textarea>
         </div>
@@ -53,19 +64,11 @@
 
     <footer>
         <p class="footer-highlight">番星C语言编辑器 · 仅限教学使用</p>
-        <p>基于 Judge0 API | 托管于 EdgeOne Pages | <span id="appVersion">version loading</span></p>
+        <p>编译服务：Judge0 · 支持 EdgeOne Pages / 本地运行 · v1.0.0</p>
+        <p class="editor-note">运行时将发送代码和标准输入到 Judge0，请勿提交密码等敏感信息。</p>
         <p id="deployStatus" class="backend-status">部署检测中...</p>
     </footer>
 
-    <script>
-        window.__APP_CONFIG__ = {
-            version: 'v2026.09.04-edgeone',
-            edgeApiUrl: '/api',
-            judge0ProxyUrl: '/proxy',
-            useProxy: true,
-            backendRunUrl: ''
-        };
-    </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/clike/clike.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closebrackets.min.js"></script>
