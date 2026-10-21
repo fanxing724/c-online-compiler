@@ -1,3 +1,16 @@
+<!-- fanxing-style:start -->
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="https://fanxing724.github.io/new-make/fanxing724/projects/c-online-compiler/cover.light.svg">
+  <img alt="番星 C 语言编辑器" src="https://fanxing724.github.io/new-make/fanxing724/projects/c-online-compiler/cover.svg" width="100%">
+</picture>
+
+**从一句 Hello World 开始，把想法跑起来。**
+
+一个小练习不一定需要先搭好完整的开发环境。打开浏览器，写下 C 代码，把输入交给程序，再看看输出；编译与执行由 Judge0 服务完成。
+
+<sub>番星 / 星轨手记 · <a href="https://fanxing724.github.io/new-make/fanxing724/projects/style.html">风格样板</a> · <a href="https://fanxing724.github.io/">个人小站</a></sub>
+<!-- fanxing-style:end -->
+
 # 番星C语言编辑器
 
 浏览器里的 C 在线编译器，提供深色编辑器布局和移动端适配，与 [Java 版本](https://github.com/fanxing724/java-online-compiler) 同步维护。前端使用 CodeMirror，代码交给 Judge0 沙箱编译执行，本机和 EdgeOne 不执行用户提交的 C 程序。
