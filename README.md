@@ -1,5 +1,7 @@
 # 番星C语言编辑器
 
+[![License: AFL-3.0](https://img.shields.io/badge/License-AFL--3.0-blue.svg)](LICENSE)
+
 一个静态 C 在线编译器，前端使用 CodeMirror，编译运行由 Judge0 CE 提供。
 
 ## 文件说明
@@ -133,3 +135,9 @@ npm start
 - 当前仅支持 C 语言（language_id = 50）。
 - 代码长度限制 32KB，CPU 时间限制 5 秒，内存限制 128MB。
 - 背景图片托管于第三方域名，如失效会自动回退为深色背景色。
+
+## 开源协议
+
+本项目采用 **Academic Free License v3.0（AFL-3.0）**，完整条款见 [LICENSE](LICENSE)。
+
+第三方依赖与外部资源遵循各自的许可条款。
